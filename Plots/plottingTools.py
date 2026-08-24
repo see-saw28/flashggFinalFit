@@ -78,7 +78,7 @@ def extractBandProperties(data,category,bidx):
   props['down2sigma'] = np.percentile(data['%s_%g'%(c,bidx)].values,50*(1+math.erf(-2./math.sqrt(2))))
   return props
 
-def makeSplusBPlot(workspace,hD,hSB,hB,hS,hDr,hBr,hSr,cat,options,dB=None,reduceRange=None):
+def makeSplusBPlot(workspace,hD,hSB,hB,hS,hDr,hBr,hSr,cat,options,dB=None,reduceRange=None, mass=None, lumi=61.9, com=13.6, is_preliminary=True):
   translateCats = {} if options.translateCats is None else LoadTranslations(options.translateCats)
   translatePOIs = {} if options.translatePOIs is None else LoadTranslations(options.translatePOIs)
   blindingRegion = [float(options.blindingRegion.split(",")[0]),float(options.blindingRegion.split(",")[1])]
@@ -234,14 +234,21 @@ def makeSplusBPlot(workspace,hD,hSB,hB,hS,hDr,hBr,hSr,cat,options,dB=None,reduce
   lat0.SetTextAlign(11)
   lat0.SetNDC()
   lat0.SetTextSize(0.06)
+
   #lat0.DrawLatex(0.12,0.92,"#bf{CMS} #it{Internal}")
-  lat0.DrawLatex(0.12,0.92,"#bf{CMS} #it{Preliminary}")
-  #lat0.DrawLatex(0.12,0.92,"#bf{CMS}")
+  if is_preliminary:
+    lat0.DrawLatex(0.12,0.92,"#bf{CMS} #it{Preliminary}")
+  else:
+    lat0.DrawLatex(0.12,0.92,"#bf{CMS}")
   #lat0.DrawLatex(0.6,0.92,"137 fb^{-1} (13 TeV)")
   lat0.DrawLatex(0.565,0.92,options.lumiLabel)
+  lat0.DrawLatex(0.565,0.92,"%s fb^{-1} (%s TeV)"%(lumi,com))
   lat0.DrawLatex(0.6,0.8,"#scale[0.6]{%s}"%Translate(cat,translateCats))
   #lat0.DrawLatex(0.15,0.83,"#scale[0.75]{H#rightarrow#gamma#gamma}")
-  lat0.DrawLatex(0.15,0.83,"#scale[0.75]{H #rightarrow #gamma#gamma, m_{H} = 125.07 GeV}")
+  if mass is not None:
+    lat0.DrawLatex(0.15,0.83,"#scale[0.75]{H #rightarrow #gamma#gamma, m_{H} = %.2f GeV}"%mass)
+  else:
+    lat0.DrawLatex(0.15,0.83,"#scale[0.75]{H #rightarrow #gamma#gamma")
   if "PseudoToy" in options.inputWSFile:
     lat0.DrawLatex(0.15,0.76,"#scale[0.75]{Pseudo data}")
   if(options.loadSnapshot is not None):

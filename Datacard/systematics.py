@@ -111,18 +111,18 @@ theory_systematics = [
                 # For some reason, the name is saved only as `Scal`, not `Scale`, do not ask me why
                 # Comment out the nominal weight here as it does not contain any `tiers`, so it would fail in `makeDatacard.py``
                 # The scheme below is valid for v13, you need to explicitly check the nanoAOD documentation to validate your setup
-                {'name':'weight_LHEScal_0','title':'CMS_HIG26007_scaleWeight_0','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']}, 
-                {'name':'weight_LHEScal_1','title':'CMS_HIG26007_scaleWeight_1','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
+                # {'name':'weight_LHEScal_0','title':'CMS_HIG26007_scaleWeight_0','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']}, 
+                # {'name':'weight_LHEScal_1','title':'CMS_HIG26007_scaleWeight_1','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
                 #{'name':'weight_LHEScal_2','title':'CMS_HIG26007_scaleWeight_2','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']}, #Unphysical
-                {'name':'weight_LHEScal_3','title':'CMS_HIG26007_scaleWeight_3','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
+                # {'name':'weight_LHEScal_3','title':'CMS_HIG26007_scaleWeight_3','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
                 # {'name':'weight_LHEScal_4','title':'CMS_HIG26007_scaleWeight_4','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']}, #nominal weight
-                {'name':'weight_LHEScal_5','title':'CMS_HIG26007_scaleWeight_5','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
+                # {'name':'weight_LHEScal_5','title':'CMS_HIG26007_scaleWeight_5','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
                 #{'name':'weight_LHEScal_6','title':'CMS_HIG26007_scaleWeight_6','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']}, #Unphysical
-                {'name':'weight_LHEScal_7','title':'CMS_HIG26007_scaleWeight_7','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
-                {'name':'weight_LHEScal_8','title':'CMS_HIG26007_scaleWeight_8','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
-                {'name':'weight_AlphaS','title':'pdf_alphas','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
-                {'name':'weight_PS_ISR','title':'ps_isr','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
-                {'name':'weight_PS_FSR','title':'ps_fsr','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
+                # {'name':'weight_LHEScal_7','title':'CMS_HIG26007_scaleWeight_7','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
+                # {'name':'weight_LHEScal_8','title':'CMS_HIG26007_scaleWeight_8','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
+                # {'name':'weight_AlphaS','title':'pdf_alphas','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
+                # {'name':'weight_PS_ISR','title':'ps_isr','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
+                # {'name':'weight_PS_FSR','title':'ps_fsr','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
                 # Hopefully I did not forget any theory weights???
                 #{'name':'alphaSWeight_0','title':'CMS_HIG26007_alphaSWeight_0','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
                 #{'name':'alphaSWeight_1','title':'CMS_HIG26007_alphaSWeight_1','type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']},
@@ -143,7 +143,7 @@ theory_systematics = [
               ]
 # PDF weight
 # For some reason, at the moment the LHEPdf weights are stored with `Pd` instead of `Pdf`, no idea why
-for i in range(1,101): theory_systematics.append( {'name':'weight_LHEPd_%g'%i, 'title':'CMS_HIG26007_pdfWeight_%g'%i, 'type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']} )
+# for i in range(1,101): theory_systematics.append( {'name':'weight_LHEPd_%g'%i, 'title':'CMS_HIG26007_pdfWeight_%g'%i, 'type':'factory','prior':'lnN','correlateAcrossYears':1,'tiers':['shape']} )
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -174,7 +174,7 @@ experimental_systematics = [
                 {'name':'weight_TriggerSF','title':'CMS_HIG26007_TriggerSF','type':'factory','prior':'lnN','correlateAcrossYears':1},
                 {'name':'weight_ElectronVetoSF','title':'CMS_eff_g_CSEV_13p6TeV','type':'factory','prior':'lnN','correlateAcrossYears':0},
                 {'name':'weight_PreselSF','title':'CMS_HIG26007_PreselSF','type':'factory','prior':'lnN','correlateAcrossYears':1},
-                {'name':'weight_SF_photon_ID','title':'CMS_HIG26007_phoIdMva','type':'factory','prior':'lnN','correlateAcrossYears':1},
+                {'name':'weight_LoosePhoIDSF','title':'CMS_HIG26007_phoIdMva','type':'factory','prior':'lnN','correlateAcrossYears':1},
                 #{'name':'LooseMvaSF','title':'CMS_HIG26007_LooseMvaSF','type':'factory','prior':'lnN','correlateAcrossYears':0},
                 #{'name':'PreselSF','title':'CMS_HIG26007_PreselSF','type':'factory','prior':'lnN','correlateAcrossYears':0},
                 #{'name':'electronVetoSF','title':'CMS_HIG26007_electronVetoSF','type':'factory','prior':'lnN','correlateAcrossYears':0},
@@ -203,8 +203,8 @@ experimental_systematics = [
                 #{'name':'JECEC2YEAR','title':'CMS_scale_j_EC2_y','type':'factory','prior':'lnN','correlateAcrossYears':0},
                 #{'name':'JECRelativeSampleYEAR','title':'CMS_scale_j_RelativeSample_y','type':'factory','prior':'lnN','correlateAcrossYears':0},
                
-                {'name':'JecSystTotal','title':'CMS_scale_j','type':'factory','prior':'lnN','correlateAcrossYears':0},
-                {'name':'JerSyst','title':'CMS_res_j','type':'factory','prior':'lnN','correlateAcrossYears':0},
+                # {'name':'JecSystTotal','title':'CMS_scale_j','type':'factory','prior':'lnN','correlateAcrossYears':0},
+                # {'name':'JerSyst','title':'CMS_res_j','type':'factory','prior':'lnN','correlateAcrossYears':0},
                 #{'name':'metJecUncertainty','title':'CMS_HIG26007_MET_scale_j','type':'factory','prior':'lnN','correlateAcrossYears':0},
                 #{'name':'metJerUncertainty','title':'CMS_HIG26007_MET_res_j','type':'factory','prior':'lnN','correlateAcrossYears':0},
                 #{'name':'metPhoUncertainty','title':'CMS_HIG26007_MET_PhotonScale','type':'factory','prior':'lnN','correlateAcrossYears':0},
@@ -219,17 +219,17 @@ experimental_systematics = [
 # mode = (other,scalesGlobal,scales,scalesCorr,smears): match the definition in the signal models
 
 signal_shape_systematics = [
-                {'name':'deltafracright','title':'CMS_HIG26007_deltafracright','type':'signal_shape','mode':'other','mean':'0.0','sigma':'0.02'},
-                #{'name':'scale','title':'scale','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},
-                {'name':'ScaleEBZee','title':'CMS_HIG26007_ScaleEBZee','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},
-                {'name':'ScaleEEZee','title':'CMS_HIG26007_ScaleEEZee','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},
-                {'name':'ScaleEBZmmg','title':'CMS_HIG26007_ScaleEBZmmg','type':'signal_shape','mode':'scalesCorr','mean':'0.0','sigma':'1.0'},
-                {'name':'ScaleEEZmmg','title':'CMS_HIG26007_ScaleEEZmmg','type':'signal_shape','mode':'scalesCorr','mean':'0.0','sigma':'1.0'},
-                {'name':'Smearing','title':'CMS_HIG26007_Smearing','type':'signal_shape','mode':'smears','mean':'0.0','sigma':'1.0'},
-                #{'name':'Material','title':'Material','type':'signal_shape','mode':'scalesCorr','mean':'0.0','sigma':'1.0'},
-                #{'name':'FNUF','title':'FNUF','type':'signal_shape','mode':'scalesCorr','mean':'0.0','sigma':'1.0'},
+                {'name':'deltafracright','title':'deltafracright','type':'signal_shape','mode':'other','mean':'0.0','sigma':'0.02'},
+                # {'name':'Scale','title':'scale','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},
+                {'name':'ScaleEBZee','title':'ScaleEBZee','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},
+                {'name':'ScaleEBZmmg','title':'ScaleEBZmmg','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},
+                {'name':'ScaleEEZee','title':'ScaleEEZee','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},
+                {'name':'ScaleEEZmmg','title':'ScaleEEZmmg','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},
+                {'name':'Smearing','title':'Smearing','type':'signal_shape','mode':'smears','mean':'0.0','sigma':'1.0'},
+                # {'name':'Material','title':'Material','type':'signal_shape','mode':'scalesCorr','mean':'0.0','sigma':'1.0'},
+                # {'name':'FNUF','title':'FNUF','type':'signal_shape','mode':'scalesCorr','mean':'0.0','sigma':'1.0'},
                 #{'name':'NonLinearity','title':'NonLinearity','type':'signal_shape','mode':'scalesGlobal','mean':'0.0','sigma':'0.005'},
-                #{'name':'Geant4','title':'Geant4','type':'signal_shape','mode':'scalesGlobal','mean':'0.0','sigma':'0.0005'},
+                # {'name':'Geant4','title':'Geant4','type':'signal_shape','mode':'scalesGlobal','mean':'0.0','sigma':'0.0005'},
                 #{'name':'HighR9EB','title':'HighR9EB','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},
                 #{'name':'HighR9EE','title':'HighR9EE','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},
                 #{'name':'LowR9EB','title':'LowR9EB','type':'signal_shape','mode':'scales','mean':'0.0','sigma':'1.0'},

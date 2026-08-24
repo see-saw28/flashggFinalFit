@@ -23,7 +23,7 @@ def extractWSFileNames( _inputWSDir ):
 def extractListOfProcs( _listOfWSFileNames ):
   procs = []
   for fName in _listOfWSFileNames:
-    p = fName.split("pythia8_")[1].split(".root")[0]
+    p = fName.split("_")[-1].split(".root")[0]
     if p not in procs: procs.append(p)
   return ",".join(procs)
 
@@ -82,7 +82,8 @@ def extractListOfProcsFromHiggsDNASignal(_listOfSubDirectories, _variable, _inou
   isDifferential = bool(_variable) and (_variable in differentialProcTable_)
   for dName in _listOfSubDirectories:
     dName = dName.split("/")[-1]
-    p = conversionTable_[dName.split("_")[0]]
+    print(" --> [DEBUG] processing directory %s"%dName)
+    p = conversionTable_[dName.split("_")[1]]
     if p not in main_procs: 
       main_procs.append(p)
       if (_inoutSplitting) and not isDifferential:

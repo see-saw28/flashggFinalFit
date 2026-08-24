@@ -77,7 +77,7 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             (mode, mass, input_path)
             for mode, process in production_modes
             for mass in input_masses
-            for input_path in glob.glob(f"{self.input_paths}/{process}_M-{mass}_{self.era}/*.root")
+            for input_path in glob.glob(f"{self.input_paths}/{process}_M{mass}_{self.era.replace('BPix', 'BPIX')}/*.root")
         ]
 
         
@@ -90,9 +90,11 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             (mode, mass, input_path)
             for mode, process in production_modes
             for mass in input_masses
-            for input_path in glob.glob(f"{self.input_paths}/{process}_M-{mass}_{self.year}/*.root")
+            for input_path in glob.glob(f"{self.input_paths}/{process}_M{mass}_{self.year}/*.root")
             ]
             branch_map = {i: mode_proc_mass for i, mode_proc_mass in enumerate(mode_proc_mass_list)}
+
+        print(branch_map)
         if not branch_map:
             print("branch_map is empty, trying process_year directories with M<mass> file names.")
             mode_proc_mass_list = [
@@ -166,7 +168,18 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             #STXS currently not implemented
             pass
                 
-        elif doDiffSplitting and not (self.variable == ''):
+        elif self.variable == 'MH':
+            # Define output workspace file
+            if self.output_dir is not None:
+                outputWSDir = os.path.join(self.output_dir,"ws_{}".format(dataToProc(productionMode)))
+            else:
+                outputWSDir = os.path.join(os.path.dirname(input_path),"ws_{}".format(dataToProc(productionMode)))
+            outputWSFile = os.path.join(outputWSDir,re.sub(r"\.root","_{}.root".format(dataToProc(productionMode)),os.path.basename(input_path)))
+
+            outputFileTargets.append(law.LocalFileTarget(os.path.join(self.output_dir, 'filechecker', f'{productionMode}_{input_mass}.txt')))
+            outputFileTargets.append(law.LocalFileTarget(outputWSFile)) 
+
+        elif not (self.variable == ''):
             varBins = [entry[1] for entry in differentialProcTable_[self.variable]]
             for currentBin in varBins:
 
@@ -195,7 +208,7 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         
         apply_mass_cut = convert_boolean_string(self.apply_mass_cut)
         doNNLOPS = convert_boolean_string(self.doNNLOPS)
-        doSystematics = convert_boolean_string(self.doSystematics)
+        doSystematics = convert_boolean_string(self.doSystematics) and input_mass not in [120, 130]
         doSTXSSplitting = convert_boolean_string(self.doSTXSSplitting)
         doDiffSplitting = convert_boolean_string(self.doDiffSplitting)
         doInOutSplitting = convert_boolean_string(self.doInOutSplitting)
@@ -212,36 +225,25 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         # Production modes to skip theory weights: fill with 1's
         modesToSkipTheoryWeights = ['thq','thw']
         
-        if self.variable == '':
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year[:4]}_inclusive.yml")
-        else:
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year[:4]}_{self.variable}.yml")
+        config = self.get_input_config(truncate=True)
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Extract options from config file:
-        options = od()
-        if input_config != '':
-            if os.path.exists( input_config ):
-                
-                with open(input_config, 'r') as file:
-                    config = yaml.safe_load(file)
+        if config != '':
+            
                     
-                config = config[f"trees2wsCfg"]
-                inputTreeDir     = config['inputTreeDir']
-                mainVars         = config['mainVars']
-                stxsVar          = config['stxsVar']
-                diffVar          = config['diffVar']
-                systematicsVars  = config['systematicsVars']
-                theoryWeightContainers = config['theoryWeightContainers']
-                systematics      = config['systematics']
-                cats             = config['cats']
+            config = config[f"trees2wsCfg"]
+            inputTreeDir     = config['inputTreeDir']
+            mainVars         = config['mainVars']
+            stxsVar          = config['stxsVar']
+            diffVar          = config['diffVar']
+            systematicsVars  = config['systematicsVars']
+            theoryWeightContainers = config['theoryWeightContainers']
+            systematics      = config['systematics']
+            cats             = config['cats']
 
-
-            else:
-                print( "[ERROR] %s config file does not exist. Leaving..."%input_config)
-                leave()
         else:
-            print( "[ERROR] Please specify config file to run from. Leaving..."%input_config)
+            print( "[ERROR] Please specify config file to run from. Leaving..."%config)
             leave()
             
         # Function to add vars to workspace
@@ -313,7 +315,7 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
                 
                 getattr(ws,'import')(d)
 
-                if self.doSystematics:
+                if doSystematics:
                     # b) make RooDataHists for systematic variations
                     if cat == "NOTAG": continue
                     for s in systematics:
@@ -349,7 +351,8 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # For theory weights: create vars for each weight
         theoryWeightColumns = {}
-        for ts, nWeights in theoryWeightContainers.items(): theoryWeightColumns[ts] = ["%s_%g"%(ts[:-1],i) for i in range(0,nWeights)] # drop final s from container name
+        if theoryWeightContainers:
+            for ts, nWeights in theoryWeightContainers.items(): theoryWeightColumns[ts] = ["%s_%g"%(ts[:-1],i) for i in range(0,nWeights)] # drop final s from container name
 
         # If year == 2018, add HET
         if self.year == '2018': systematics.append("JetHEM")
@@ -454,7 +457,7 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         # If not splitting by STXS bin then add dummy column to dataframe
         if not doSTXSSplitting:
             data[stxsVar] = 'nosplit'  
-            if self.doSystematics: sdata[stxsVar] = 'nosplit'
+            if doSystematics: sdata[stxsVar] = 'nosplit'
 
 
 
@@ -642,7 +645,57 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
                     # Handle the case where the file does not exist or is inaccessible
                     print(f"Error creating file. Probably I/O error.")
                     return False
+        else:
+            
+            fiducial_mask = data['CMS_hgg_mass'] > 0 # Basically a true mask because we are all inclusive
+            if doSystematics:
+                fiducial_mask_syst = sdata['CMS_hgg_mass'] > 0
 
+            df = data[fiducial_mask]
+            sdf = None
+            if doSystematics: 
+                sdf = sdata[fiducial_mask_syst]
+
+            # Define output workspace file
+            if self.output_dir is not None:
+                # Multiple slashes are normalised away, no worries ("../test/" and "../test" are equivalent)
+                if self.batch_flavor == "slurm/psi":
+                    outputWSDir = os.path.join(temp_output_dir, "ws_{}".format(dataToProc(productionMode)))
+                else:
+                    outputWSDir = os.path.join(self.output_dir, "ws_{}".format(dataToProc(productionMode))) 
+            else:
+                if self.batch_flavor == "slurm/psi":
+                    outputWSDir = os.path.join(temp_output_dir, "ws_{}".format(dataToProc(productionMode)))
+                else:
+                    outputWSDir = os.path.join(os.path.dirname(input_path), "ws_{}".format(dataToProc(productionMode)))
+            if not os.path.exists(outputWSDir):
+                os.system("mkdir -p %s"%outputWSDir)
+            if self.batch_flavor == "slurm/psi":
+                os.system("mkdir -p %s"%os.path.join(temp_output_dir, 'filechecker'))
+            else:
+                os.system("mkdir -p %s"%os.path.join(self.output_dir, 'filechecker'))
+            outputWSFile = os.path.join(outputWSDir,re.sub(r"\.root","_{}.root".format(dataToProc(productionMode)),os.path.basename(input_path)))
+            print(" --> Creating output workspace: (%s)"%outputWSFile)
+            
+            productionMode_string = productionMode  # This is, for example, "ggh_in"
+
+            create_workspace(df, sdf, outputWSFile, productionMode_string)
+            
+            # Check if output workspace is > 2000 bytes (== file empty)
+            try:
+                file_size = os.path.getsize(outputWSFile)  # Get the file size in bytes
+                if file_size > 2000:
+                    if self.batch_flavor == "slurm/psi":
+                        with open(os.path.join(temp_output_dir, 'filechecker', f'{productionMode}_{input_mass}.txt'), 'w') as f:
+                            pass
+                    else:
+                        with open(os.path.join(self.output_dir, 'filechecker', f'{productionMode}_{input_mass}.txt'), 'w') as f:
+                            pass
+            except OSError:
+                # Handle the case where the file does not exist or is inaccessible
+                print(f"Error creating file. Probably I/O error.")
+                return False
+                
         if self.batch_flavor == "slurm/psi":
             execute_command([f"ls -al {temp_output_dir}/*"], shell=True)
             if "/work" in self.output_dir:
@@ -669,7 +722,7 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             shutil.rmtree(temp_output_dir)  
 
 
-class Trees2WS(law.Task):
+class Trees2WS(Task):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default='', description="Variable to be used for output folder naming")
     year = law.Parameter(default='2022', description="Year")
@@ -681,17 +734,10 @@ class Trees2WS(law.Task):
         # common between the required task and the instance (self)
         
         # Load the input configuration
-        if self.variable == '':
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+        config = self.get_input_config()
         
-        with open(input_config, 'r') as file:
-            config = yaml.safe_load(file)
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
+
         input_paths = config["inputFiles"]["Trees2WS"]
         
         config = config["trees2wsCfg"]
@@ -712,38 +758,47 @@ class Trees2WS(law.Task):
             for era in eras
         ]
 
-        i = 1
         for era, var, path_to_root_files in era_list:
             era_suffix = "" if era in ["", "None"] else era
 
             if var == "":
                 current_output_path = os.path.join(
-                    output_dir, f"input_output_{self.year}{era_suffix}"
+                    output_dir, "Tree2WS", f"input_output_{self.year}{era_suffix}"
                 )
             else:
                 current_output_path = os.path.join(
-                    output_dir, f"input_output_{var}_{self.year}{era_suffix}"
+                    output_dir, "Tree2WS", f"input_output_{var}_{self.year}{era_suffix}"
                 )
              
-            task_version = f"{self.year}_{var if var != '' else 'inclusive'}_v{i}"
-            tasks.append(Trees2WSSingleProcess(input_paths=path_to_root_files, era=era, apply_mass_cut=mass_cut, mass_cut_range=mass_cut_r, year=f"{self.year}{era}", doSystematics=doSystematics, doDiffSplitting=doDiffSplitting, doSTXSSplitting=doSTXSSplitting, doInOutSplitting=doInOutSplitting, output_dir=current_output_path, variable=var, version=task_version, workflow=config['execution'], batch_flavor=self.batch_flavor, slurm_partition=config['batchPartition'], slurm_memory=config['batchMemory'], slurm_max_runtime=config['batchMaxRuntime'], htcondor_partition=config['batchPartition'], htcondor_memory=config['batchMemory'], htcondor_max_runtime=config['batchMaxRuntime']))
-            i += 1
+            tasks.append(Trees2WSSingleProcess.req(
+                self, 
+                input_paths=path_to_root_files, 
+                era=era, 
+                apply_mass_cut=mass_cut, 
+                mass_cut_range=mass_cut_r, 
+                year=f"{self.year}{era}", 
+                doSystematics=doSystematics, 
+                doDiffSplitting=doDiffSplitting, 
+                doSTXSSplitting=doSTXSSplitting, 
+                doInOutSplitting=doInOutSplitting, 
+                output_dir=current_output_path, 
+                variable=var, 
+                workflow=config['execution'], 
+                batch_flavor=self.batch_flavor, 
+                slurm_partition=config['batchPartition'], 
+                slurm_memory=config['batchMemory'], 
+                slurm_max_runtime=config['batchMaxRuntime'], 
+                htcondor_partition=config['batchPartition'], 
+                htcondor_memory=config['batchMemory'], 
+                htcondor_max_runtime=config['batchMaxRuntime']))
         return tasks
 
     def output(self):
         
-        if self.variable == '':
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+        # Load the input configuration
+        config = self.get_input_config()
         
-        with open(input_config, 'r') as file:
-            config = yaml.safe_load(file)
-
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
         
         input_paths = config["inputFiles"]["Trees2WS"]
         
@@ -759,9 +814,9 @@ class Trees2WS(law.Task):
             era_suffix = "" if era in ["", "None"] else era
 
             if var == "":
-                current_output_path = os.path.join(output_dir, f"input_output_{self.year}{era_suffix}")
+                current_output_path = os.path.join(output_dir, "Tree2WS", f"input_output_{self.year}{era_suffix}")
             else:
-                current_output_path = os.path.join(output_dir, f"input_output_{var}_{self.year}{era_suffix}")
+                current_output_path = os.path.join(output_dir, "Tree2WS", f"input_output_{var}_{self.year}{era_suffix}")
 
             outputFolders.append(law.LocalFileTarget(os.path.join(current_output_path, "ws_signal")))
 
@@ -771,18 +826,10 @@ class Trees2WS(law.Task):
         
         print("Trees2WS ran through. Moving output to the subdirectory ./ws_signal")
         
-        if self.variable == '':
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+        # Load the input configuration
+        config = self.get_input_config()
         
-        with open(input_config, 'r') as file:
-            config = yaml.safe_load(file)
-
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
         
         eras = allErasMap.get(str(self.year), [""])
         
@@ -793,9 +840,9 @@ class Trees2WS(law.Task):
             era_suffix = "" if era in ["", "None"] else era
 
             if var == "":
-                current_output_path = os.path.join(output_dir, f"input_output_{self.year}{era_suffix}")
+                current_output_path = os.path.join(output_dir, "Tree2WS", f"input_output_{self.year}{era_suffix}")
             else:
-                current_output_path = os.path.join(output_dir, f"input_output_{var}_{self.year}{era_suffix}")
+                current_output_path = os.path.join(output_dir, "Tree2WS", f"input_output_{var}_{self.year}{era_suffix}")
 
             outputFolders.append(current_output_path)
 

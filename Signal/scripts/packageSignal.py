@@ -88,13 +88,13 @@ if opt.outputDir == swd__:
     print(" --> Writing to: ./outdir_%s/CMS-HGG_sigfit_%s_%s_%s.root"%(opt.outputExt,opt.outputExt,opt.cat,opt.year))
     f = ROOT.TFile("./outdir_%s/CMS-HGG_sigfit_%s_%s_%s.root"%(opt.outputExt,opt.outputExt,opt.cat,opt.year),"RECREATE")
 else:
-  if not os.path.isdir("%s/outdir_packaged%s"%(opt.outputDir,opt.outputExt)): os.system("mkdir %s/outdir_packaged%s"%(opt.outputDir,opt.outputExt))
+  if not os.path.isdir("%s/outdir_%s"%(opt.outputDir,opt.outputExt)): os.system("mkdir %s/outdir_%s"%(opt.outputDir,opt.outputExt))
   if opt.mergeYears:
-    print(" --> Writing to: %s/outdir_packaged%s/CMS-HGG_sigfit_packaged%s_%s.root"%(opt.outputDir,opt.outputExt,opt.outputExt,opt.cat))
-    f = ROOT.TFile("%s/outdir_packaged%s/CMS-HGG_sigfit_packaged%s_%s.root"%(opt.outputDir,opt.outputExt,opt.outputExt,opt.cat),"RECREATE")
+    print(" --> Writing to: %s/outdir_%s_%s/CMS-HGG_sigfit_%s_%s.root"%(opt.outputDir,opt.outputExt,opt.year,opt.outputExt,opt.cat))
+    f = ROOT.TFile("%s/outdir_%s_%s/CMS-HGG_sigfit_%s_%s.root"%(opt.outputDir,opt.outputExt,opt.year,opt.outputExt,opt.cat),"RECREATE")
   else:
-    print(" --> Writing to: %s/outdir_packaged%s/CMS-HGG_sigfit_packaged%s_%s_%s.root"%(opt.outputDir,opt.outputExt,opt.outputExt,opt.cat,opt.year))
-    f = ROOT.TFile("%s/outdir_packaged%s/CMS-HGG_sigfit_packaged%s_%s_%s.root"%(opt.outputDir,opt.outputExt,opt.outputExt,opt.cat,opt.year),"RECREATE")
+    print(" --> Writing to: %s/outdir_%s/CMS-HGG_sigfit_%s_%s_%s.root"%(opt.outputDir,opt.outputExt,opt.outputExt,opt.cat,opt.year))
+    f = ROOT.TFile("%s/outdir_%s/CMS-HGG_sigfit_%s_%s_%s.root"%(opt.outputDir,opt.outputExt,opt.outputExt,opt.cat,opt.year),"RECREATE")
 
 packagedWS.Write()
 f.Close()

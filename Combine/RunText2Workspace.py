@@ -19,10 +19,10 @@ def get_options():
   return parser.parse_args()
 (opt,args) = get_options()
 
-if opt.outputDir != '.':
-  outputDir = opt.outputDir + "/Combine"
-else:
-  outputDir = opt.outputDir
+# if opt.outputDir != '.':
+#   outputDir = opt.outputDir + "/Combine"
+# else:
+outputDir = opt.outputDir
 
 
 def leave():
@@ -50,7 +50,7 @@ else:
     print(" --> Input: %s.txt --> Output: %s.root"%(opt.inputName,opt.outputName))
 
 if not os.path.isdir(f"{outputDir}/t2w_jobs"): os.system(f"mkdir {outputDir}/t2w_jobs")
-
+print(outputDir)
 if opt.ext != "":
   t2w_file_path = "%s/t2w_jobs/t2w_%s"%(outputDir,opt.ext)
 else:

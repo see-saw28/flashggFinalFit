@@ -75,10 +75,24 @@ if opt.inputWSFile is not None:
       k, v = kv.split(":")[0], kv.split(":")[1]
       w.var(k).setVal(float(v))
 
+if opt.lumi is not None: 
+  lumi = float(opt.lumi)
+else:
+  lumi = 61.9
+if opt.com is not None: 
+  com = float(opt.com)
+else:
+  com = 13.6
+
+is_preliminary = True
+
 # Define blinding region
 blindingRegion = [float(opt.blindingRegion.split(",")[0]),float(opt.blindingRegion.split(",")[1])]
 # Define xvariable and categories
-if opt.mass is not None: w.var("MH").setVal(float(opt.mass))
+if opt.mass is not None: 
+  w.var("MH").setVal(float(opt.mass))
+mass = w.var("MH").getVal()
+
 xvar = w.var(opt.xvar.split(",")[0]) 
 weight = ROOT.RooRealVar("weight","weight",0)
 xvar.SetTitle(opt.xvar.split(",")[1])
@@ -428,8 +442,8 @@ for cidx in range(len(cats)):
   if not opt.skipIndividualCatPlots:
     print("    * making plot")
     if not os.path.isdir("./SplusBModels%s"%(opt.ext)): os.system("mkdir ./SplusBModels%s"%(opt.ext))
-    if opt.doBands: makeSplusBPlot(w,h_data,h_sbpdf,h_bpdf,h_spdf,h_data_ratio,h_bpdf_ratio,h_spdf_ratio,c,opt,df_bands,_reduceRange)
-    else: makeSplusBPlot(w,h_data,h_sbpdf,h_bpdf,h_spdf,h_data_ratio,h_bpdf_ratio,h_spdf_ratio,c,opt,None,_reduceRange)
+    if opt.doBands: makeSplusBPlot(w,h_data,h_sbpdf,h_bpdf,h_spdf,h_data_ratio,h_bpdf_ratio,h_spdf_ratio,c,opt,df_bands,_reduceRange, mass=mass, lumi=lumi, com=com, is_preliminary=is_preliminary)
+    else: makeSplusBPlot(w,h_data,h_sbpdf,h_bpdf,h_spdf,h_data_ratio,h_bpdf_ratio,h_spdf_ratio,c,opt,None,_reduceRange, mass=mass, lumi=lumi, com=com, is_preliminary=is_preliminary)
 
   # Delete histograms
   h_data.Delete()
@@ -456,9 +470,9 @@ if( len(opt.cats.split(",")) > 1 )|( opt.cats == 'all' ):
   if opt.doSumCategories:
     if not os.path.isdir("./SplusBModels%s"%(opt.ext)): os.system("mkdir ./SplusBModels%s"%(opt.ext))
     print(" --> Making plot for sum of categories")
-    if opt.doBands: makeSplusBPlot(w,h_data_sum,h_sbpdf_sum,h_bpdf_sum,h_spdf_sum,h_data_ratio_sum,h_bpdf_ratio_sum,h_spdf_ratio_sum,'all',opt, df_bands,_reduceRange)
-    else: makeSplusBPlot(w,h_data_sum,h_sbpdf_sum,h_bpdf_sum,h_spdf_sum,h_data_ratio_sum,h_bpdf_ratio_sum,h_spdf_ratio_sum,'all',opt,None,_reduceRange)
+    if opt.doBands: makeSplusBPlot(w,h_data_sum,h_sbpdf_sum,h_bpdf_sum,h_spdf_sum,h_data_ratio_sum,h_bpdf_ratio_sum,h_spdf_ratio_sum,'all',opt, df_bands,_reduceRange, mass=mass, lumi=lumi, com=com, is_preliminary=is_preliminary)
+    else: makeSplusBPlot(w,h_data_sum,h_sbpdf_sum,h_bpdf_sum,h_spdf_sum,h_data_ratio_sum,h_bpdf_ratio_sum,h_spdf_ratio_sum,'all',opt,None,_reduceRange, mass=mass, lumi=lumi, com=com, is_preliminary=is_preliminary)
     if opt.doCatWeights:
       print(" --> Making weighted plot for sum of categories")
-      if opt.doBands: makeSplusBPlot(w,h_wdata_sum,h_wsbpdf_sum,h_wbpdf_sum,h_wspdf_sum,h_wdata_ratio_sum,h_wbpdf_ratio_sum,h_wspdf_ratio_sum,'wall',opt, df_bands, _reduceRange)
-      else: makeSplusBPlot(w,h_wdata_sum,h_wsbpdf_sum,h_wbpdf_sum,h_wspdf_sum,h_wdata_ratio_sum,h_wbpdf_ratio_sum,h_wspdf_ratio_sum,'wall',opt, None, _reduceRange)
+      if opt.doBands: makeSplusBPlot(w,h_wdata_sum,h_wsbpdf_sum,h_wbpdf_sum,h_wspdf_sum,h_wdata_ratio_sum,h_wbpdf_ratio_sum,h_wspdf_ratio_sum,'wall',opt, df_bands, _reduceRange, mass=mass, lumi=lumi, com=com, is_preliminary=is_preliminary)
+      else: makeSplusBPlot(w,h_wdata_sum,h_wsbpdf_sum,h_wbpdf_sum,h_wspdf_sum,h_wdata_ratio_sum,h_wbpdf_ratio_sum,h_wspdf_ratio_sum,'wall',opt, None, _reduceRange, mass=mass, lumi=lumi, com=com, is_preliminary=is_preliminary)

@@ -24,6 +24,7 @@ for poi in data['POIs']: pois.append( poi['name'] )
 # Extract midpoint values of pois from frozen parameter
 poisCorrected = od()
 for param in data['params']:
+  print(param['name'])
   p = param['name']
   if p == opt.frozenParam:
     for poi in pois:
@@ -39,7 +40,9 @@ if len(poisCorrected) == 0:
 POICorrected = []
 for poi in data['POIs']:
   pInfo = {}
+  if poi['name'] not in ['MH']: continue
   pInfo['name'] = poi['name']
+  print(poi['name'], poisCorrected)
   pInfo['fit'] = []
   # Extract fit list
   _fit = poi['fit']

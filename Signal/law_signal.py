@@ -32,7 +32,7 @@ def convert_boolean_string(string):
     else:
         return False              
 
-class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     input_path = law.Parameter(description="Path to the input ROOT files (/ws_signal)")
     output_dir = law.Parameter(description="Path to the output directory")
     ext = law.Parameter(default="earlyAnalysis", description="Extension to be used for output folder naming")
@@ -40,7 +40,6 @@ class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
     procs = law.Parameter(description="Processes")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(description="Year")    
-    
     era = law.Parameter(default="", description="Current Era")    
     
     batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
@@ -56,21 +55,12 @@ class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+        # Load the input configuration
+        config = self.get_input_config()
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
             
-        tasks["Trees2WS"] = Trees2WS(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor)
+        tasks["Trees2WS"] = Trees2WS.req(self, output_dir=output_dir)
         
         return tasks
     
@@ -90,12 +80,14 @@ class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
         
         cat = self.branch_data
 
-        ftest_output = [os.path.join(self.output_dir, f'outdir_{self.ext}/fTest/json/nGauss_{cat}.json')]
+        ftest_output = [os.path.join(self.output_dir, "Signal", f'outdir_{self.ext}/fTest/json/nGauss_{cat}.json')]
                 
         outputFileTargets = []
                 
         for _, current_output_path in enumerate(ftest_output):
             outputFileTargets.append(law.LocalFileTarget(current_output_path))
+
+        # output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/fTest/Plots")))
 
         return outputFileTargets
 
@@ -107,11 +99,11 @@ class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
         if self.batch_flavor == "slurm/psi":
             # Have to use /scratch/batch_username/ for slurm/psi
             if "/work" in self.output_dir:
-                execute_command([f'mkdir -p {self.output_dir}/outdir_{self.ext}/fTest/Plots'], shell=True)
-                execute_command([f'mkdir -p {self.output_dir}/outdir_{self.ext}/fTest/json'], shell=True)
+                execute_command([f'mkdir -p {self.output_dir}/Signal/outdir_{self.ext}/fTest/Plots'], shell=True)
+                execute_command([f'mkdir -p {self.output_dir}/Signal/outdir_{self.ext}/fTest/json'], shell=True)
             else:   
-                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {self.output_dir}/outdir_{self.ext}/fTest/Plots'], shell=True)
-                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {self.output_dir}/outdir_{self.ext}/fTest/json'], shell=True)
+                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {self.output_dir}/Signal/outdir_{self.ext}/fTest/Plots'], shell=True)
+                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {self.output_dir}/Signal/outdir_{self.ext}/fTest/json'], shell=True)
 
             os.environ["TARGET_PATH"] = f"/scratch/{os.environ['USER']}/{os.environ['SLURM_JOB_ID']}"
             execute_command([f'mkdir -p $TARGET_PATH/outdir_{self.ext}/fTest/Plots'], shell=True)
@@ -119,9 +111,9 @@ class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
             output_dir = os.environ["TARGET_PATH"]
             # os.chdir(os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'impact'))
         else:
-            execute_command([f'mkdir -p {self.output_dir}/outdir_{self.ext}/fTest/Plots'], shell=True)
-            execute_command([f'mkdir -p {self.output_dir}/outdir_{self.ext}/fTest/json'], shell=True)
-            output_dir = self.output_dir
+            execute_command([f'mkdir -p {self.output_dir}/Signal/outdir_{self.ext}/fTest/Plots'], shell=True)
+            execute_command([f'mkdir -p {self.output_dir}/Signal/outdir_{self.ext}/fTest/json'], shell=True)
+            output_dir = os.path.join(self.output_dir, "Signal")
             # os.chdir(os.path.join(self.output_dir, 'Combine', fitFolderName, 'impact'))
 
         script_path = os.path.join(os.environ["ANALYSIS_PATH"], "Signal/scripts/fTest.py")
@@ -136,7 +128,7 @@ class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
             "--doPlots"
         ]
         command = arguments
-        print(command)
+        print(' '.join(command))
         try:
             result = subprocess.run(command, check=True, text=True, capture_output=True)
             print("Script output:", result.stdout)
@@ -167,7 +159,7 @@ class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
             # Clean up the temporary directory
             shutil.rmtree(os.environ["TARGET_PATH"])
 
-class FTest(law.Task):
+class FTest(Task):
     variable = law.Parameter(default="", description="Variable to be used")
     output_dir = law.Parameter(default="", description="Path to the output directory")
     year = law.Parameter(default='2022', description="Year")
@@ -178,21 +170,11 @@ class FTest(law.Task):
         # req() is defined on all tasks and handles the passing of all parameter values that are
         # common between the required task and the instance (self)
         
-        # Path should be somewhere centrally...
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
 
+        # Load the input configuration
+        config = self.get_input_config()
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
             
         # Use allData.root from HiggsDNA to automatically determine categories
         data_input_path = config['inputFiles']['Trees2WSData']  
@@ -201,7 +183,6 @@ class FTest(law.Task):
         
         tasks = []
         
-        i = 1
         # Loop over a years era
         eras = allErasMap.get(f"{self.year}", [""])
 
@@ -211,12 +192,14 @@ class FTest(law.Task):
 
             if self.variable == "":
                 input_path = os.path.join(
-                    config["outputFolder"],
+                    output_dir,
+                    "Tree2WS",
                     f"input_output_{self.year}{era_suffix}/ws_signal"
                 )
             else:
                 input_path = os.path.join(
-                    config["outputFolder"],
+                    output_dir,
+                    "Tree2WS",
                     f"input_output_{self.variable}_{self.year}{era_suffix}/ws_signal"
                 )
 
@@ -240,60 +223,27 @@ class FTest(law.Task):
                 currentConfig['procs'] = extractListOfProcsFromHiggsDNASignal(signal_input_path, self.variable, inOutSplittingFlag)
             currentConfig['nProcs'] = len(currentConfig['procs'].split(","))
 
-            tasks.append(FTestCategory(input_path=input_path, output_dir=output_dir, ext=currentConfig["ext"], cats=currentConfig["cats"], procs=currentConfig["procs"], variable=self.variable, year=self.year, version=f"{self.year}_{self.variable}_v{i}" if self.variable != "" else f"{self.year}_v{i}", workflow=currentConfig['execution'], era=currentEra, batch_flavor=self.batch_flavor, slurm_partition=currentConfig['batchPartition'], slurm_memory=currentConfig['batchMemory'], slurm_max_runtime=currentConfig['batchMaxRuntime'], htcondor_partition=currentConfig['batchPartition'], htcondor_memory=currentConfig['batchMemory'], htcondor_max_runtime=currentConfig['batchMaxRuntime']))
-            i += 1
+            for cat in currentConfig['cats'].split(","):
+                tasks.append(FTestCategory.req(
+                    self,
+                    input_path=input_path, 
+                    output_dir=output_dir, 
+                    ext=currentConfig['ext'], 
+                    cats=cat, 
+                    procs=currentConfig['procs'], 
+                    workflow=currentConfig['execution'], 
+                    era=currentEra, 
+                    slurm_partition=currentConfig['batchPartition'], 
+                    slurm_memory=currentConfig['batchMemory'], 
+                    slurm_max_runtime=currentConfig['batchMaxRuntime'], 
+                    htcondor_partition=currentConfig['batchPartition'], 
+                    htcondor_memory=currentConfig['batchMemory'], 
+                    htcondor_max_runtime=currentConfig['batchMaxRuntime']))
 
         return tasks
 
     def output(self):
-        # Path should be somewhere centrally...
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
-            
-        data_input_path = config['inputFiles']['Trees2WSData']  
-
-        output_paths = []
-
-        # Loop over a years era
-        eras = allErasMap.get(f"{self.year}", [""])
-        
-        for currentEra in eras:
-            
-            era_suffix = "" if currentEra in ["", "None"] else currentEra
-
-            if currentEra not in ["", "None"]:
-                currentConfig = config[f"signalScriptCfg_{self.year}_{era_suffix}"]
-            else:
-                currentConfig = config[f"signalScriptCfg_{self.year}"]
-            # returns output folder
-            
-            
-            output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/fTest")))
-            output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/fTest/json")))
-            output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/fTest/Plots")))
-            
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # If proc/cat == auto. Extract processes and categories
-            if currentConfig['cats'] == "auto":
-                currentConfig['cats'] = extractListOfCatsFromHiggsDNAAllData(data_input_path)
-                
-            cat_list = currentConfig['cats'].split(",")
-            for cat in cat_list:
-                output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/fTest/json/nGauss_{cat}.json")))
-
-        return output_paths
+        return self.input()
                 
     
     def run(self):
@@ -301,7 +251,7 @@ class FTest(law.Task):
         return True
     
     
-class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     input_path = law.Parameter(description="Path to the input ROOT files (/ws_signal)")
     output_dir = law.Parameter(description="Path to the output directory")
     ext = law.Parameter(default="earlyAnalysis", description="Extension to be used for output folder naming")
@@ -313,6 +263,7 @@ class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
     smears = law.Parameter(description="Smearings")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(description="Year")    
+    era = law.Parameter(description="era")    
     
     batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
     
@@ -327,21 +278,12 @@ class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+        # Load the input configuration
+        config = self.get_input_config()
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
             
-        tasks["Trees2WS"] = Trees2WS(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor)
+        tasks["Trees2WS"] = Trees2WS.req(self, output_dir=output_dir)
         
         return tasks
     
@@ -361,7 +303,7 @@ class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         
         cat = self.branch_data
         
-        ftest_output = [os.path.join(self.output_dir, f'outdir_{self.ext}/calcPhotonSyst/pkl/{cat}.pkl')]
+        ftest_output = [os.path.join(self.output_dir, f'Signal/outdir_{self.ext}/calcPhotonSyst/pkl/{cat}.pkl')]
                 
         outputFileTargets = []
         
@@ -380,17 +322,18 @@ class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         if self.batch_flavor == "slurm/psi":
             # Have to use /scratch/batch_username/ for slurm/psi
             if "/work" in self.output_dir:
-                execute_command([f'mkdir -p {self.output_dir}/outdir_{self.ext}/calcPhotonSyst/pkl'], shell=True)
+                execute_command([f'mkdir -p {self.output_dir}/outdir_{self.ext}/Signal/calcPhotonSyst/pkl'], shell=True)
             else:   
-                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {self.output_dir}/calcPhotonSyst/pkl'], shell=True)
+                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {self.output_dir}/Signal/calcPhotonSyst/pkl'], shell=True)
 
             os.environ["TARGET_PATH"] = f"/scratch/{os.environ['USER']}/{os.environ['SLURM_JOB_ID']}"
-            execute_command([f'mkdir -p $TARGET_PATH/outdir_{self.ext}/calcPhotonSyst/pkl'], shell=True)
+            execute_command([f'mkdir -p $TARGET_PATH/outdir_{self.ext}/Signal/calcPhotonSyst/pkl'], shell=True)
             output_dir = os.environ["TARGET_PATH"]
             # os.chdir(os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'impact'))
         else:
-            execute_command([f'mkdir -p {self.output_dir}/outdir_{self.ext}/calcPhotonSyst/pkl'], shell=True)
-            output_dir = self.output_dir
+            execute_command([f'mkdir -p {self.output_dir}/Signal/outdir_{self.ext}/calcPhotonSyst/pkl'], shell=True)
+            output_dir = os.path.join(self.output_dir, "Signal")
+            print(f"Output directory: {output_dir}")
             # os.chdir(os.path.join(self.output_dir, 'Combine', fitFolderName, 'impact'))
 
         script_path = os.path.join(os.environ["ANALYSIS_PATH"], "Signal/scripts/calcPhotonSyst.py")
@@ -403,7 +346,8 @@ class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
             "--outputDir", f"{output_dir}",
             "--inputWSDir", f"{self.input_path}",
             "--scales", f"{self.scales}",
-            "--smears", f"{self.smears}"
+            "--smears", f"{self.smears}",
+            "--doPlots"
         ]
         if self.scalesCorr != "":
             arguments.append("--scalesCorr")
@@ -412,7 +356,7 @@ class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
             arguments.append("--scalesGlobal")
             arguments.append("%s"%self.scalesGlobal)
         command = arguments
-        # print(command)
+        print(' '.join(command))
         try:
             result = subprocess.run(command, check=True, text=True, capture_output=True)
             print("Script output:", result.stdout)
@@ -443,7 +387,7 @@ class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
             # Clean up the temporary directory
             shutil.rmtree(os.environ["TARGET_PATH"])
 
-class CalcPhotonSyst(law.Task):
+class CalcPhotonSyst(Task):
     variable = law.Parameter(default="", description="Variable to be used")
     output_dir = law.Parameter(default="", description="Path to the output directory")
     year = law.Parameter(default='2022', description="Year")
@@ -454,20 +398,11 @@ class CalcPhotonSyst(law.Task):
         # req() is defined on all tasks and handles the passing of all parameter values that are
         # common between the required task and the instance (self)
         
-        # Path should be somewhere centrally...
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+
+        # Load the input configuration
+        config = self.get_input_config()
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
         
         # Use allData.root from HiggsDNA to automatically determine categories
         data_input_path = config['inputFiles']['Trees2WSData']  
@@ -477,7 +412,6 @@ class CalcPhotonSyst(law.Task):
         
         tasks = []
         
-        i = 1
         # Loop over a years era
         eras = allErasMap.get(f"{self.year}", [""])
         
@@ -486,9 +420,9 @@ class CalcPhotonSyst(law.Task):
             era_suffix = "" if currentEra in ["", "None"] else currentEra
             
             if self.variable == '':
-                input_path = os.path.join(config["outputFolder"], f"input_output_{self.year}{era_suffix}/ws_signal")
+                input_path = os.path.join(output_dir, "Tree2WS", f"input_output_{self.year}{era_suffix}/ws_signal")
             else:
-                input_path = os.path.join(config["outputFolder"], f"input_output_{self.variable}_{self.year}{era_suffix}/ws_signal")
+                input_path = os.path.join(output_dir, "Tree2WS", f"input_output_{self.variable}_{self.year}{era_suffix}/ws_signal")
 
 
             if currentEra not in ["", "None"]:
@@ -511,67 +445,43 @@ class CalcPhotonSyst(law.Task):
             for mp in currentConfig['massPoints'].split(","): mps.append(int(mp))
             currentConfig['massLow'], currentConfig['massHigh'] = '%s'%min(mps), '%s'%max(mps)
                     
-            tasks.append(CalcPhotonSystCategory(input_path=input_path, output_dir=output_dir, ext=currentConfig['ext'], cats=currentConfig['cats'], procs=currentConfig['procs'], scales=currentConfig['scales'], scalesCorr=currentConfig['scalesCorr'], scalesGlobal=currentConfig['scalesGlobal'], smears=currentConfig['smears'], variable=self.variable, year=self.year, version=f"{self.year}_{self.variable}_v{i}" if self.variable != "" else f"{self.year}_v{i}", workflow=currentConfig['execution'], batch_flavor=self.batch_flavor, slurm_partition=currentConfig['batchPartition'], slurm_memory=currentConfig['batchMemory'], slurm_max_runtime=currentConfig['batchMaxRuntime'], htcondor_partition=currentConfig['batchPartition'], htcondor_memory=currentConfig['batchMemory'], htcondor_max_runtime=currentConfig['batchMaxRuntime']))
-            i += 1
+            tasks.append(CalcPhotonSystCategory.req(
+                self,
+                input_path=input_path, 
+                output_dir=output_dir, 
+                ext=currentConfig['ext'], 
+                cats=currentConfig['cats'], 
+                procs=currentConfig['procs'], 
+                scales=currentConfig['scales'], 
+                scalesCorr=currentConfig['scalesCorr'], 
+                scalesGlobal=currentConfig['scalesGlobal'], 
+                smears=currentConfig['smears'], 
+                era=currentEra,
+                # version=f"v{i}", 
+                workflow=currentConfig['execution'], 
+                slurm_partition=currentConfig['batchPartition'], 
+                slurm_memory=currentConfig['batchMemory'], 
+                slurm_max_runtime=currentConfig['batchMaxRuntime'], 
+                htcondor_partition=currentConfig['batchPartition'], 
+                htcondor_memory=currentConfig['batchMemory'], 
+                htcondor_max_runtime=currentConfig['batchMaxRuntime']))
 
         return tasks
     
     def output(self):
-              
-        # Path should be somewhere centrally...
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
 
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
-            
-        data_input_path = config['inputFiles']['Trees2WSData']  
-        
-        output_paths = []
-        
-        # Loop over a years era
-        eras = allErasMap.get(f"{self.year}", [""])
-        
-        for currentEra in eras:
-            
-            era_suffix = "" if currentEra in ["", "None"] else currentEra
-
-            if currentEra not in ["", "None"]:
-                currentConfig = config[f"signalScriptCfg_{self.year}_{era_suffix}"]
-            else:
-                currentConfig = config[f"signalScriptCfg_{self.year}"]
-            # returns output folder
-            
-            output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/calcPhotonSyst")))
-            output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/calcPhotonSyst/pkl")))
-        
-        
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # If proc/cat == auto. Extract processes and categories
-            if currentConfig['cats'] == "auto":
-                currentConfig['cats'] = extractListOfCatsFromHiggsDNAAllData(data_input_path)
-                
-            cat_list = currentConfig['cats'].split(",")
-            for cat in cat_list:
-                output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/calcPhotonSyst/pkl/{cat}.pkl")))
-                                    
-        return output_paths
+        return self.input()
                 
     
     def run(self):
-        
+
         return True
     
-    
-class SignalFitCategoryProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+
+
+
+
+class SignalFitCategoryProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     input_path = law.Parameter(description="Path to the input ROOT files (/ws_signal)")
     output_dir = law.Parameter(description="Path to the output directory")
     ext = law.Parameter(default="earlyAnalysis", description="Extension to be used for output folder naming")
@@ -582,6 +492,7 @@ class SignalFitCategoryProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
     scalesGlobal = law.Parameter(default="",description="Global scales")
     smears = law.Parameter(description="Smearings")
     year = law.Parameter(description="Year")    
+    era = law.Parameter(description="era")   
     analysisXSBR = law.Parameter(description="XSBR Analysis")
     analysisRM = law.Parameter(description="Replacement Map Analysis")
     replacementThreshold = law.Parameter(description="replacementThreshold")
@@ -607,23 +518,11 @@ class SignalFitCategoryProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
         
         year = self.year[:4]
         
-        # Path should be somewhere centrally...
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
+
+        output_dir = self.get_output_dir(truncate=True)
             
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
-            
-        tasks["FTest"] = FTest(variable=self.variable, output_dir=output_dir, year=year, batch_flavor=self.batch_flavor)
-        tasks["CalcPhotonSyst"] = CalcPhotonSyst(variable=self.variable, output_dir=output_dir, year=year, batch_flavor=self.batch_flavor)
+        tasks["FTest"] = FTest.req(self, output_dir=output_dir, year=year)
+        tasks["CalcPhotonSyst"] = CalcPhotonSyst.req(self, output_dir=output_dir, year=year)
 
         return tasks
     
@@ -646,8 +545,8 @@ class SignalFitCategoryProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
                 
         cat, proc = self.branch_data
         
-        signal_output = [os.path.join(self.output_dir, f'outdir_{self.ext}/signalFit/output/CMS-HGG_sigfit_{self.ext}_{proc}_{self.year}_{cat}.root')]
-        signal_output += glob.glob(os.path.join(self.output_dir, f'outdir_{self.ext}/signalFit/Plots/{proc}_{self.year}_{cat}*'))
+        signal_output = [os.path.join(self.output_dir, "Signal", f'outdir_{self.ext}/signalFit/output/CMS-HGG_sigfit_{self.ext}_{proc}_{self.year}_{cat}.root')]
+        signal_output += glob.glob(os.path.join(self.output_dir, "Signal", f'outdir_{self.ext}/signalFit/Plots/{proc}_{self.year}_{cat}*'))
                 
         outputFileTargets = []
             
@@ -676,9 +575,9 @@ class SignalFitCategoryProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
             execute_command([f'mkdir -p $TARGET_PATH/outdir_{self.ext}/signalFit/Plots'], shell=True)
             output_dir = os.environ["TARGET_PATH"]
         else:
-            execute_command([f'mkdir -p {self.output_dir}/outdir_{self.ext}/signalFit/output'], shell=True)
-            execute_command([f'mkdir -p {self.output_dir}/outdir_{self.ext}/signalFit/Plots'], shell=True)
-            output_dir = self.output_dir
+            execute_command([f'mkdir -p {self.output_dir}/Signal/outdir_{self.ext}/signalFit/output'], shell=True)
+            execute_command([f'mkdir -p {self.output_dir}/Signal/outdir_{self.ext}/signalFit/Plots'], shell=True)
+            output_dir = os.path.join(self.output_dir, "Signal")
 
         script_path = os.path.join(os.environ["ANALYSIS_PATH"], "Signal/scripts/signalFit.py")
         arguments = [
@@ -711,7 +610,7 @@ class SignalFitCategoryProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
             arguments += ["--ingredientsDir"]
             arguments += ["%s"%self.output_dir]
         command = arguments
-        print(command)
+        print(' '.join(command))
         try:
             result = subprocess.run(command, check=True, text=True, capture_output=True)
             print("Script output:", result.stdout)
@@ -742,37 +641,22 @@ class SignalFitCategoryProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
             # Clean up the temporary directory
             shutil.rmtree(os.environ["TARGET_PATH"])
 
-class SignalFit(law.Task):
-    variable = law.Parameter(default="", description="Variable to be used")
-    output_dir = law.Parameter(default="", description="Path to the output directory")
-    year = law.Parameter(default='2022', description="Year")
-
-    batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
+class SignalFit(Task):
     
     def requires(self):
         
-        # Path should be somewhere centrally...
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+
+        # Load the input configuration
+        config = self.get_input_config()
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
             
         signal_input_path = glob.glob(config['inputFiles']['Trees2WS']+'/*')
         
         inOutSplittingFlag = config['trees2wsCfg']['doInOutSplitting']  or config['trees2wsCfg']['doDiffSplitting']
             
         tasks = []
-            
-        i = 1
+
         # Loop over a years era
         eras = allErasMap.get(f"{self.year}", [""])
         
@@ -781,9 +665,9 @@ class SignalFit(law.Task):
             era_suffix = "" if currentEra in ["", "None"] else currentEra
             
             if self.variable == "":
-                input_path = os.path.join(config["outputFolder"], f"input_output_{self.year}{era_suffix}/ws_signal")
+                input_path = os.path.join(output_dir, "Tree2WS", f"input_output_{self.year}{era_suffix}/ws_signal")
             else:
-                input_path = os.path.join(config["outputFolder"], f"input_output_{self.variable}_{self.year}{era_suffix}/ws_signal")
+                input_path = os.path.join(output_dir, "Tree2WS", f"input_output_{self.variable}_{self.year}{era_suffix}/ws_signal")
 
             if currentEra not in ["", "None"]:
                 currentConfig = config[f"signalScriptCfg_{self.year}_{era_suffix}"]
@@ -807,85 +691,60 @@ class SignalFit(law.Task):
             for mp in currentConfig['massPoints'].split(","): mps.append(int(mp))
             currentConfig['massLow'], currentConfig['massHigh'] = '%s'%min(mps), '%s'%max(mps)         
             
-            tasks.append(SignalFitCategoryProcess(input_path=input_path, output_dir=output_dir, ext=currentConfig['ext'], cats=currentConfig['cats'], procs=currentConfig['procs'], scales=currentConfig['scales'], scalesCorr=currentConfig['scalesCorr'], scalesGlobal=currentConfig['scalesGlobal'], smears=currentConfig['smears'], year=currentConfig['year'], analysisXSBR=currentConfig['analysisXSBR'], analysisRM=currentConfig['analysisRM'], replacementThreshold=currentConfig['replacementThreshold'], massPoints=currentConfig['massPoints'], beamspotWidthData=currentConfig['beamspotWidthData'], beamspotWidthMC=currentConfig['beamspotWidthMC'], doPlots=currentConfig['doPlots'], variable=self.variable, version=f"{self.year}_{self.variable}_v{i}" if self.variable != "" else f"{self.year}_v{i}", workflow=currentConfig['execution'], batch_flavor=self.batch_flavor, slurm_partition=currentConfig['batchPartition'], slurm_memory=currentConfig['batchMemory'], slurm_max_runtime=currentConfig['batchMaxRuntime'], htcondor_partition=currentConfig['batchPartition'], htcondor_memory=currentConfig['batchMemory'], htcondor_max_runtime=currentConfig['batchMaxRuntime']))
-            i += 1
+            tasks.append(SignalFitCategoryProcess.req(
+                self,
+                input_path=input_path, 
+                output_dir=output_dir, 
+                ext=currentConfig['ext'], 
+                cats=currentConfig['cats'], 
+                procs=currentConfig['procs'], 
+                scales=currentConfig['scales'], 
+                scalesCorr=currentConfig['scalesCorr'], 
+                scalesGlobal=currentConfig['scalesGlobal'], 
+                smears=currentConfig['smears'], 
+                year=currentConfig['year'], 
+                analysisXSBR=currentConfig['analysisXSBR'], 
+                analysisRM=currentConfig['analysisRM'], 
+                replacementThreshold=currentConfig['replacementThreshold'], 
+                massPoints=currentConfig['massPoints'], 
+                beamspotWidthData=currentConfig['beamspotWidthData'], 
+                beamspotWidthMC=currentConfig['beamspotWidthMC'], 
+                doPlots=currentConfig['doPlots'], 
+                era=currentEra,
+                workflow=currentConfig['execution'],
+                slurm_partition=currentConfig['batchPartition'], 
+                slurm_memory=currentConfig['batchMemory'], 
+                slurm_max_runtime=currentConfig['batchMaxRuntime'], 
+                htcondor_partition=currentConfig['batchPartition'], 
+                htcondor_memory=currentConfig['batchMemory'], 
+                htcondor_max_runtime=currentConfig['batchMaxRuntime']))
                 
         return tasks
     
     def output(self):
-        # Path should be somewhere centrally...
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
-            
-        output_paths = []
-        
-        inOutSplittingFlag = config['trees2wsCfg']['doInOutSplitting']  or config['trees2wsCfg']['doDiffSplitting']
-        
-        signal_input_path = glob.glob(config['inputFiles']['Trees2WS']+'/*')
-        
-        data_input_path = config['inputFiles']['Trees2WSData']  
 
-        # Loop over a years era
-        eras = allErasMap.get(f"{self.year}", [""])
-        
-        for currentEra in eras:
-            
-            era_suffix = "" if currentEra in ["", "None"] else currentEra
+        return self.input()
 
-            if currentEra not in ["", "None"]:
-                currentConfig = config[f"signalScriptCfg_{self.year}_{era_suffix}"]
-            else:
-                currentConfig = config[f"signalScriptCfg_{self.year}"]
 
-            # returns output folder
-            output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/signalFit")))
-            output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/signalFit/output")))
-            output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/signalFit/Plots")))
-            
-            
-            if currentConfig['cats'] == "auto":
-                currentConfig['cats'] = extractListOfCatsFromHiggsDNAAllData(data_input_path)
-            currentConfig['nCats'] = len(currentConfig['cats'].split(","))
-
-            if currentConfig['procs'] == "auto":
-                currentConfig['procs'] = extractListOfProcsFromHiggsDNASignal(signal_input_path, self.variable, inOutSplittingFlag)
-            currentConfig['nProcs'] = len(currentConfig['procs'].split(","))
-
-            for processIndex in range(currentConfig['nProcs']):
-                for categoryIndex in range(currentConfig['nCats']):
-                    category = currentConfig['cats'].split(",")[categoryIndex]
-                    process = currentConfig['procs'].split(",")[processIndex]
-                    output_paths += [law.LocalFileTarget(os.path.join(output_dir, f"outdir_{currentConfig['ext']}/signalFit/output/CMS-HGG_sigfit_{currentConfig['ext']}_{process}_{currentConfig['year']}_{category}.root"))]
-            
-        return output_paths
                 
     def run(self):
         return True
-    
-    
-class SignalPackagingCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
-    output_dir = law.Parameter(description="Path to the output directory")
+
+
+class SignalTask(Task):
+    ext = law.Parameter(default="packaged", description="Extension to be used for output folder naming")
+
+    def get_ext(self):
+        return f"{self.ext}_{self.year}"
+
+class SignalPackagingCategory(SignalTask, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     exts = law.Parameter(default="earlyAnalysis", description="Extension to be used for output folder naming")
-    outputExt = law.Parameter(default="", description="Extension to be used for packaged folder naming")
     cats = law.Parameter(description="List of categories separated with a comma.")
-    year = law.Parameter(description="Year")    
+    era = law.Parameter(description="era")   
     massPoints = law.Parameter(description="Mass Points")
     mergeYears = law.Parameter(default=True, description="Flag if one should merge the years or eras.")
+    requireSignalFit = law.Parameter(default=True, description="Require SignalFit before packaging.")
     
-    batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
-
-    variable = law.Parameter(default="", description="Variable to be used")
     
     htcondor_job_kwargs_submit = {"spool": True}
     
@@ -898,24 +757,15 @@ class SignalPackagingCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWo
         if workflow_reqs:
             tasks.update(workflow_reqs)
 
-        year = self.year[:4]
-        
-        # Path should be somewhere centrally...
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
-                                
-        tasks["SignalFit"] = SignalFit(variable=self.variable, output_dir=output_dir, year=year, batch_flavor=self.batch_flavor)
+        if not convert_boolean_string(self.requireSignalFit):
+            return tasks
+
+        for year in yearMap[self.year]:
+            # Load the input configuration
+            config = self.get_input_config(year=year)
+            output_dir = self.get_output_dir()
+                                    
+            tasks[f"SignalFit_{year}"] = SignalFit.req(self, output_dir=output_dir, year=year)
                     
         return tasks
     
@@ -935,7 +785,7 @@ class SignalPackagingCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWo
     def output(self):
         cat = self.branch_data
         
-        signal_output = [os.path.join(self.output_dir, f'outdir_packaged{self.outputExt}/CMS-HGG_sigfit_packaged{self.outputExt}_{cat}.root')]
+        signal_output = [os.path.join(self.output_dir, "Signal", f'outdir_{self.get_ext()}/CMS-HGG_sigfit_{self.ext}_{cat}.root')]
                 
         outputFileTargets = []
             
@@ -953,24 +803,24 @@ class SignalPackagingCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWo
         if self.batch_flavor == "slurm/psi" and on_slurm_node:
             # Have to use /scratch/batch_username/ for slurm/psi
             if "/work" in self.output_dir:
-                execute_command([f'mkdir -p {self.output_dir}/outdir_packaged{self.outputExt}/packageSignal'], shell=True)
+                execute_command([f'mkdir -p {self.output_dir}/Signal/outdir_{self.get_ext()}/packageSignal'], shell=True)
             else:   
-                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {self.output_dir}/outdir_packaged{self.outputExt}/packageSignal'], shell=True)
+                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {self.output_dir}/outdir_{self.get_ext()}/packageSignal'], shell=True)
 
             os.environ["TARGET_PATH"] = f"/scratch/{os.environ['USER']}/{os.environ['SLURM_JOB_ID']}"
-            execute_command([f'mkdir -p $TARGET_PATH/outdir_packaged{self.outputExt}/packageSignal'], shell=True)
+            execute_command([f'mkdir -p $TARGET_PATH/Signal/outdir_{self.get_ext()}/packageSignal'], shell=True)
             output_dir = os.environ["TARGET_PATH"]
             # os.chdir(os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'impact'))
         else:
-            execute_command([f'mkdir -p {self.output_dir}/outdir_packaged{self.outputExt}/packageSignal'], shell=True)
-            output_dir = self.output_dir
+            execute_command([f'mkdir -p {self.output_dir}/Signal/outdir_{self.get_ext()}'], shell=True)
+            output_dir = os.path.join(self.output_dir, "Signal")
             # os.chdir(os.path.join(self.output_dir, 'Combine', fitFolderName, 'impact'))
         
         if self.batch_flavor == "slurm/psi" and on_slurm_node:
             if self.variable == '':
                 configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
             else:
-                configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+                configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/v{self.version}/{self.year}_{self.variable}.yml")
             
             #Load central config file
             with open(configYamlPath, 'r') as file:
@@ -1003,11 +853,12 @@ class SignalPackagingCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWo
                 execute_command(slurm_copy_command)
 
         script_path = os.path.join(os.environ["ANALYSIS_PATH"], "Signal/scripts/packageSignal.py")
+
         arguments = [
             "python3",
             script_path,
             "--cat", cat,
-            "--outputExt", self.outputExt,
+            "--outputExt", self.ext,
             "--exts", self.exts,
             "--outputDir", f"{output_dir}",
             "--year", f"{self.year}",
@@ -1015,7 +866,7 @@ class SignalPackagingCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWo
             "--mergeYears", f"{self.mergeYears}",
         ]
         command = arguments
-        # print(command)
+        print(' '.join(command))
         try:
             result = subprocess.run(command, check=True, text=True, capture_output=True)
             print("Script output:", result.stdout)
@@ -1030,13 +881,13 @@ class SignalPackagingCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWo
             if "/work" in self.output_dir:
                 slurm_copy_command = [
                     'cp', '-rf',
-                    f"{os.environ['TARGET_PATH']}/outdir_packaged{self.outputExt}/",
+                    f"{os.environ['TARGET_PATH']}/outdir_{self.get_ext()}/",
                     self.output_dir
                 ]
             else:
                 slurm_copy_command = [
                     'xrdcp', '-rf',
-                    f"{os.environ['TARGET_PATH']}/outdir_packaged{self.outputExt}/",
+                    f"{os.environ['TARGET_PATH']}/outdir_{self.get_ext()}/",
                     'root://t3dcachedb03.psi.ch:1094//'+self.output_dir
                 ]
             print(slurm_copy_command)
@@ -1044,36 +895,23 @@ class SignalPackagingCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWo
             # Clean up the temporary directory
             shutil.rmtree(os.environ["TARGET_PATH"])
 
-class SignalPackaging(law.Task):
-    variable = law.Parameter(default="", description="Variable to be used")
-    output_dir = law.Parameter(default="", description="Path to the output directory")
-    year = law.Parameter(default='2022', description="Year")
-    
-    batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
-    
+class SignalPackaging(SignalTask):
+
     def requires(self):
         
-        # Path should be somewhere centrally...
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+
+        # Load the input configuration
+        config = self.get_input_config()
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
             
         tasks = []
         
         packagedConfig = config[f"packaged_{self.year}"]
         
-        outputExt = packagedConfig['ext']
         mergeYears = packagedConfig['mergeYears']
+        requireSignalFit = packagedConfig.get('requireSignalFit', True)
+        signalFitDirs = packagedConfig.get('signalFitDirs', {})
         
         
         # Use allData.root from HiggsDNA to automatically determine categories
@@ -1090,70 +928,286 @@ class SignalPackaging(law.Task):
         exts = []
             
         # Loop over a years era and extract the ext string in a list
-        eras = allErasMap.get(f"{self.year}", [""])
-        
-        for currentEra in eras:
-            
-            era_suffix = "" if currentEra in ["", "None"] else currentEra
 
-            if currentEra not in ["", "None"]:
-                currentConfig = config[f"signalScriptCfg_{self.year}_{era_suffix}"]
-            else:
-                currentConfig = config[f"signalScriptCfg_{self.year}"]
+        for yr in yearMap[self.year]:
 
-            exts.append(currentConfig['ext'])
-        
-        exts_string = ''
-        for i, currentExt in enumerate(exts):
-            exts_string += currentExt
-            if i < (len(exts) - 1):
-                exts_string += ','
+            config = self.get_input_config(year=yr)
+
+            eras = allErasMap.get(f"{yr}", [""])
             
-        tasks.append(SignalPackagingCategory(output_dir=output_dir, exts=exts_string, outputExt=outputExt, cats=packagedConfig['cats'], year=self.year, massPoints=packagedConfig['massPoints'], mergeYears=mergeYears, variable=self.variable, version=f"v1", workflow=packagedConfig['execution'], batch_flavor=self.batch_flavor, slurm_partition=packagedConfig['batchPartition'], slurm_memory=packagedConfig['batchMemory'], slurm_max_runtime=packagedConfig['batchMaxRuntime'], htcondor_partition=packagedConfig['batchPartition'], htcondor_memory=packagedConfig['batchMemory'], htcondor_max_runtime=packagedConfig['batchMaxRuntime']))
+            for currentEra in eras:
+                
+                era_suffix = "" if currentEra in ["", "None"] else currentEra
+
+                if currentEra not in ["", "None"]:
+                    currentConfig = config[f"signalScriptCfg_{yr}_{era_suffix}"]
+                else:
+                    currentConfig = config[f"signalScriptCfg_{yr}"]
+
+                currentExt = currentConfig['ext']
+                if currentExt in signalFitDirs:
+                    exts.append(f"{currentExt}={signalFitDirs[currentExt]}")
+                else:
+                    exts.append(currentExt)
+            
+            exts_string = ''
+            for i, currentExt in enumerate(exts):
+                exts_string += currentExt
+                if i < (len(exts) - 1):
+                    exts_string += ','
+                
+        tasks.append(SignalPackagingCategory.req(
+            self,
+            output_dir=output_dir, 
+            exts=exts_string, 
+            ext=self.ext, 
+            cats=packagedConfig['cats'], 
+            era=currentEra,
+            massPoints=packagedConfig['massPoints'], 
+            mergeYears=mergeYears, 
+            requireSignalFit=requireSignalFit, 
+            workflow=packagedConfig['execution'], 
+            slurm_partition=packagedConfig['batchPartition'], 
+            slurm_memory=packagedConfig['batchMemory'], 
+            slurm_max_runtime=packagedConfig['batchMaxRuntime'], 
+            htcondor_partition=packagedConfig['batchPartition'], 
+            htcondor_memory=packagedConfig['batchMemory'], 
+            htcondor_max_runtime=packagedConfig['batchMaxRuntime']))
                 
         return tasks
 
     
     def output(self):
-        
-        # Path should be somewhere centrally...
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
-            
-        output_paths = []
-        
-        currentConfig = config[f"packaged_{self.year}"]
-
-        output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_packaged{currentConfig['ext']}")))
-        output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_packaged{currentConfig['ext']}/packageSignal")))
-        
-
-        # Use allData.root from HiggsDNA to automatically determine categories
-        data_input_path = config['inputFiles']['Trees2WSData']  
-        if currentConfig['cats'] == "auto":
-            currentConfig['cats'] = extractListOfCatsFromHiggsDNAAllData(data_input_path)
-        currentConfig['nCats'] = len(currentConfig['cats'].split(","))
-        
-        for categoryIndex in range(currentConfig['nCats']):
-            category = currentConfig['cats'].split(",")[categoryIndex]
-
-            output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"outdir_packaged{currentConfig['ext']}/CMS-HGG_sigfit_packaged{currentConfig['ext']}_{category}.root")))
-            
-                        
-        return output_paths
+        return self.input()
                 
     def run(self):
         return True
-    
-    
+
+
+class SignalPlotCategory(SignalTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow):
+    signal_dir = law.Parameter(default="", description="Signal directory containing outdir_<ext>")
+    plot_input_dir = law.Parameter(default="", description="Input directory containing CMS-HGG_sigfit_<ext>_<cat>.root files")
+    plot_output_dir = law.Parameter(default="", description="Output directory for RunPlotter plots")
+    cats = law.Parameter(description="Comma separated list of categories")
+    procs = law.Parameter(default="all", description="Processes passed to RunPlotter.py")
+    years = law.Parameter(default="2022preEE", description="Years passed to RunPlotter.py")
+    plot_years_separate = law.Parameter(default=True, description="Pass --plot-years-separate to RunPlotter.py")
+    require_packaging = law.Parameter(default=True, description="Require SignalPackaging before plotting")
+
+
+    htcondor_job_kwargs_submit = {"spool": True}
+
+    def workflow_requires(self):
+        workflow_reqs = super().workflow_requires()
+
+        tasks = {}
+        if workflow_reqs:
+            tasks.update(workflow_reqs)
+
+        if convert_boolean_string(self.require_packaging):
+            tasks["SignalPackaging"] = SignalPackaging.req(
+                self,
+                variable=self.variable,
+                output_dir=self.output_dir,
+                year=self.year,
+                batch_flavor=self.batch_flavor,
+            )
+
+        return tasks
+
+    def create_branch_map(self):
+        cat_list = [cat.strip() for cat in self.cats.split(",") if cat.strip()]
+        return {i: cat for i, cat in enumerate(cat_list)}
+
+    def signal_path(self):
+        if self.signal_dir != "":
+            return self.signal_dir
+        return os.path.join(os.environ["ANALYSIS_PATH"], "Signal")
+
+    def input_path(self):
+        if self.plot_input_dir != "":
+            return self.plot_input_dir
+        if self.output_dir != "":
+            return os.path.join(self.output_dir, "Signal",f"outdir_{self.get_ext()}")
+        return os.path.join(self.signal_path(), "Signal", f"outdir_{self.get_ext()}")
+
+    def plot_path(self):
+        if self.plot_output_dir != "":
+            plot_dir = self.plot_output_dir
+        elif self.output_dir != "":
+            plot_dir = os.path.join(self.output_dir, "Signal", f"outdir_{self.get_ext()}", "Plots")
+        else:
+            plot_dir = os.path.join(self.signal_path(), "Signal", f"outdir_{self.get_ext()}", "Plots")
+
+        if len(self.years.split(",")) > 1 and not convert_boolean_string(self.plot_years_separate):
+            plot_dir = os.path.join(plot_dir, "noPlotYearsSeparate")
+
+        return plot_dir
+
+    def plot_suffix(self, cat):
+        proc_ext = "" if self.procs == "all" else f"_{self.procs}"
+        year_ext = "" if len(self.years.split(",")) > 1 else f"_{self.years}"
+        return f"{cat}{proc_ext}{year_ext}"
+
+    def output(self):
+        cat = self.branch_data
+        plot_dir = self.plot_path()
+        suffix = self.plot_suffix(cat)
+        return [
+            law.LocalFileTarget(os.path.join(plot_dir, f"smodel_{suffix}.pdf")),
+            law.LocalFileTarget(os.path.join(plot_dir, f"smodel_{suffix}.png")),
+        ]
+
+    def run(self):
+        cat = self.branch_data
+        signal_dir = self.signal_path()
+        safe_mkdir(self.plot_path())
+
+        env = os.environ.copy()
+        env["ANALYSIS_PATH"] = os.path.dirname(signal_dir)
+
+        script_path = os.path.join(signal_dir, "RunPlotter.py")
+        command = [
+            "python3",
+            script_path,
+            "--procs", self.procs,
+            "--years", self.years,
+            "--cats", cat,
+            "--ext", self.ext,
+            "--inputDir", self.input_path(),
+            "--outputDir", self.plot_path(),
+        ]
+
+        if convert_boolean_string(self.plot_years_separate):
+            command.append("--plot-years-separate")
+
+        print(" ".join(command))
+        result = subprocess.run(
+            command,
+            check=True,
+            text=True,
+            capture_output=True,
+            cwd=signal_dir,
+            env=env,
+        )
+        print("Script output:", result.stdout)
+
+
+class SignalPlot(SignalTask):
+    signal_dir = law.Parameter(default="", description="Signal directory containing outdir_<ext>")
+    plot_input_dir = law.Parameter(default="", description="Input directory containing CMS-HGG_sigfit_<ext>_<cat>.root files")
+    plot_output_dir = law.Parameter(default="", description="Output directory for RunPlotter plots")
+    cats = law.Parameter(default="", description="Comma separated list of categories. If empty, uses packaged_<year>.cats from config.")
+    procs = law.Parameter(default="all", description="Processes passed to RunPlotter.py")
+    years = law.Parameter(default="2022preEE", description="Years passed to RunPlotter.py")
+    plot_years_separate = law.Parameter(default=True, description="Pass --plot-years-separate to RunPlotter.py")
+    require_packaging = law.Parameter(default=True, description="Require SignalPackaging before plotting")
+
+
+
+    def packaged_config(self):
+        if self.variable == '':
+            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
+        else:
+            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/v{self.version}/{self.year}_{self.variable}.yml")
+
+        with open(configYamlPath, 'r') as file:
+            config = yaml.safe_load(file)
+
+        packagedConfig = config[f"packaged_{self.year}"]
+
+        if self.cats == "":
+            cats = packagedConfig["cats"]
+            if cats == "auto":
+                data_input_path = config['inputFiles']['Trees2WSData']
+                cats = extractListOfCatsFromHiggsDNAAllData(data_input_path)
+        else:
+            cats = self.cats
+
+        ext = self.ext if self.ext != "" else f"packaged{packagedConfig['ext']}"
+        output_dir = self.output_dir if self.output_dir != "" else os.path.join(config['outputFolder'], f'v{self.version}')
+
+        return cats, ext, output_dir
+
+    def requires(self):
+        cats, ext, output_dir = self.packaged_config()
+
+        return SignalPlotCategory.req(
+            self,
+            ext=ext,
+            cats=cats,
+            output_dir=output_dir,
+        )
+
+    def output(self):
+        return self.input()
+
+    def run(self):
+        return True
+
+
+class SignalPlotEverything(SignalTask):
+    signal_dir = law.Parameter(default="", description="Signal directory containing outdir_<ext>")
+    plot_input_dir = law.Parameter(default="", description="Input directory containing CMS-HGG_sigfit_<ext>_<cat>.root files")
+    plot_output_dir = law.Parameter(default="", description="Output directory for RunPlotter plots")
+    ext = law.Parameter(default="", description="Extension used by RunPlotter.py. If empty, uses packaged_<year>.ext from config.")
+    procs = law.Parameter(default="all", description="Processes passed to RunPlotter.py")
+    require_packaging = law.Parameter(default=True, description="Require SignalPackaging before plotting")
+
+
+
+    def plot_years(self):
+        config = self.get_input_config()
+        
+        years = []
+
+        for year in yearMap[self.year]:
+            eras = allErasMap.get(f"{year}", [""])
+            config = self.get_input_config(year=year)
+            for currentEra in eras:
+                era_suffix = "" if currentEra in ["", "None"] else currentEra
+                if currentEra not in ["", "None"]:
+                    config_key = f"signalScriptCfg_{year}_{era_suffix}"
+                else:
+                    config_key = f"signalScriptCfg_{year}"
+                if config_key in config and "year" in config[config_key]:
+                    years.append(config[config_key]["year"])
+
+        if not years:
+            for config_key in sorted(config):
+                if config_key.startswith(f"signalScriptCfg_{self.year}") and "year" in config[config_key]:
+                    years.append(config[config_key]["year"])
+
+        years = list(dict.fromkeys(years))
+
+        if len(years) > 1:
+            return years + [",".join(years)]
+        return years
+
+    def requires(self):
+        tasks = []
+        cat_modes = ["", "all", "wall"]
+        print(f"SignalPlotEverything: Plotting for years: {self.plot_years()} and categories: {cat_modes}")
+        for years in self.plot_years():
+            for cats in cat_modes:
+                plot_years_separate_options = [True]
+                if len(years.split(",")) > 1:
+                    plot_years_separate_options.append(False)
+
+                for plot_years_separate in plot_years_separate_options:
+                    tasks.append(
+                        SignalPlot.req(
+                            self,
+                            cats=cats,
+                            years=years,
+                            plot_years_separate=plot_years_separate,
+                        )
+                    )
+
+        return tasks
+
+    def output(self):
+        return self.input()
+
+    def run(self):
+        return True

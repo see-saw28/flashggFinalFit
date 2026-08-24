@@ -19,6 +19,8 @@ def get_options():
   parser.add_option('--cats', dest='cats', default='', help="Comma separated list of analysis categories to include. all = sum of all categories, wall = weighted sum of categories (requires S/S+B from ./Plots/getCatInfo.py)")
   parser.add_option('--loadCatWeights', dest='loadCatWeights', default='', help="Load S/S+B weights for analysis categories (path to weights json file)")
   parser.add_option('--ext', dest='ext', default='test', help="Extension: defines output dir where signal models are saved")
+  parser.add_option('--inputDir', dest='inputDir', default='', help="Input directory containing CMS-HGG_sigfit_<ext>_<cat>.root files. Defaults to Signal/outdir_<ext>.")
+  parser.add_option('--outputDir', dest='outputDir', default='', help="Output directory for plots. Defaults to Signal/outdir_<ext>/Plots.")
   parser.add_option("--xvar", dest="xvar", default='CMS_hgg_mass:m_{#gamma#gamma}:GeV', help="x-var (name:title:units)")
   parser.add_option("--mass", dest="mass", default='125', help="Mass of datasets")
   parser.add_option("--MH", dest="MH", default='125', help="Higgs mass (for pdf)")
@@ -35,11 +37,14 @@ def get_options():
 ROOT.gROOT.SetBatch(True)
 ROOT.gStyle.SetOptStat(0)
 
+inputDir = opt.inputDir if opt.inputDir != '' else "%s/outdir_%s"%(swd__,opt.ext)
+outputDir = opt.outputDir if opt.outputDir != '' else "%s/outdir_%s/Plots"%(swd__,opt.ext)
+
 # Extract input files: for first file extract xvar
 inputFiles = od()
 citr = 0
 if opt.cats in ['all','wall']:
-  fs = glob.glob("%s/outdir_%s/CMS-HGG_sigfit_%s_*.root"%(swd__,opt.ext,opt.ext))
+  fs = glob.glob("%s/CMS-HGG_sigfit_%s_*.root"%(inputDir,opt.ext))
   for f in fs:
     cat = re.sub(".root","",f.split("/")[-1].split("_%s_"%opt.ext)[-1])
     inputFiles[cat] = f
@@ -63,7 +68,7 @@ else:
     cat_list = [c.strip() for c in str(cat_raw).split(",") if c.strip()]
 
   for cat in cat_list:
-    f = "%s/outdir_%s/CMS-HGG_sigfit_%s_%s.root"%(swd__,opt.ext,opt.ext,cat)
+    f = "%s/CMS-HGG_sigfit_%s_%s.root"%(inputDir,opt.ext,cat)
     inputFiles[cat] = f
     if citr == 0:
       w = ROOT.TFile(f).Get("wsig_13TeV")
@@ -176,5 +181,5 @@ for cat,f in inputFiles.items():
   fin.Close()
 
 # Make plot
-if not os.path.isdir("%s/outdir_%s/Plots"%(swd__,opt.ext)): os.system("mkdir %s/outdir_%s/Plots"%(swd__,opt.ext))
-plotSignalModel(hists,opt,_outdir="%s/outdir_%s/Plots"%(swd__,opt.ext))
+if not os.path.isdir(outputDir): os.makedirs(outputDir)
+plotSignalModel(hists,opt,_outdir=outputDir)

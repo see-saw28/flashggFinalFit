@@ -17,6 +17,28 @@ twd__ = "%s/Trees2WS"%cwd__
 # Centre of mass energy string
 sqrts__ = "13TeV"
 
+sqrtMap = {
+    '2016':13, 
+    '2017':13, 
+    '2018':13, 
+    'combined':13, 
+    'merged':13,
+    '2022preEE':13.6,
+    '2223preEE':13.6,
+    '2022postEE':13.6,
+    '2223postEE':13.6,
+    '2022': 13.6,
+    '2023preBPix': 13.6,
+    '2223preBPix': 13.6,
+    '2023postBPix': 13.6,
+    '2223postBPix': 13.6,
+    '2023': 13.6,
+    '2223': 13.6,
+    '2024': 13.6,
+    '2024all': 13.6,
+    'Run3': 13.6
+}
+
 # Luminosity map in fb^-1
 lumiMap = {
     '2016':36.33, 
@@ -145,13 +167,6 @@ short_production_modes = ["ggh", "vbf", "vh", "tth", "bbh"]
 
 eft_variables = ["chg", "chb", "chw", "chwb", "chbox", "chd", "chl3", "cll1", "ctbre", "cthre", "ctwre"]
 
-allErasMap = {
-    '2022': ["preEE", "postEE"],
-    '2023': ["preBPix", "postBPix"],
-    '2223': ["preEE", "postEE", "preBPix", "postBPix"],
-    # 2024 does not have eras
-    'Run3': ["preEE", "postEE", "preBPix", "postBPix"],
-}
 
 conversionTable_ = {
     "GluGluHtoGG": "ggh",

@@ -33,8 +33,11 @@ globalXSBRMap['example']['THW'] = {'mode':'tHW'}
 # Setting the values at MH=125.38 GeV
 globalXSBRMap['tutorial'] = od()
 globalXSBRMap['tutorial']['decay'] = {'mode':'hgg'}
-globalXSBRMap['tutorial']['GG2H'] = {'mode':'constant', 'factor':51.96}
-globalXSBRMap['tutorial']['VBF'] = {'mode':'constant', 'factor':4.067}
+globalXSBRMap['tutorial']['ggh'] = {'mode':'constant', 'factor':51.96}
+globalXSBRMap['tutorial']['vbf'] = {'mode':'constant', 'factor':4.067}
+globalXSBRMap['tutorial']['vh'] = {'mode':'constant','factor':2.3781}
+globalXSBRMap['tutorial']['tth'] = {'mode':'constant','factor':0.5638}
+globalXSBRMap['tutorial']['bbh'] = {'mode':'constant','factor':0.49}
 
 # STXS analysis: add factor for bin composition
 globalXSBRMap['STXS'] = od()

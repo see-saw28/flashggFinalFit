@@ -34,7 +34,7 @@ def execute_command(command, return_output=False, shell=False):
         print("Error executing script:", e.stderr)
         raise
 
-class BackgroundCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+# class BackgroundCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     input_path = law.Parameter(description="Path to the alldata input ROOT file")
     output_dir = law.Parameter(description="Path to the output directory")
     ext = law.Parameter(default="earlyAnalysis", description="Extension to be used for output folder naming")
@@ -47,19 +47,8 @@ class BackgroundCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
 
     def requires(self):
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
         
         config = config["backgroundScriptCfg"]
         
@@ -89,7 +78,7 @@ class BackgroundCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
         bkg_plots += glob.glob(os.path.join(outdir_ext, f'bkgfTest-Data/*_cat{cat_offset}.pdf'))
         bkg_plots += glob.glob(os.path.join(outdir_ext, f'bkgfTest-Data/*_cat{cat_offset}.pdf_gofTest.pdf'))
     
-        output_paths = [os.path.join(outdir_ext, f'CMS-HGG_multipdf_{cat}.root'), os.path.join(outdir_ext, f'bkgfTest-Data/multipdf_{cat}.pdf'), os.path.join(outdir_ext, f'bkgfTest-Data/multipdf_{cat}.png')]
+        output_paths = [os.path.join(outdir_ext, f'CMS-HGG_multipdf_{self.year}_{cat}.root'), os.path.join(outdir_ext, f'bkgfTest-Data/multipdf_{cat}.pdf'), os.path.join(outdir_ext, f'bkgfTest-Data/multipdf_{cat}.png')]
         
         output_paths += bkg_plots
 
@@ -125,7 +114,7 @@ class BackgroundCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
             "-p", "none",
             "-f", cat,
             "--outputFolder", f"{temp_output_dir}",
-            "--ext", f'{self.ext}',
+            "--ext", f'{self.ext}_{self.year}',
             "--catOffset", cat_offset,
             "--intLumi", f"{lumiMap[self.year]}",
             "--year", f"{self.year}",
@@ -172,12 +161,7 @@ class BackgroundCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
             shutil.rmtree(temp_output_dir)
         
 
-class Background(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
-    output_dir = law.Parameter(default="", description="Path to the output directory")
-    year = law.Parameter(default='2022', description="Year")
-    variable = law.Parameter(default="", description="Variable to be used")
-
-    batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
+class Background(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow ):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
 
     # def requires(self):
     def workflow_requires(self):
@@ -188,36 +172,29 @@ class Background(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+        # Load the input configuration
+        config = self.get_input_config()
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
         
         config = config["backgroundScriptCfg"]
             
-        tasks["Trees2WSData"] = Trees2WSData(output_dir=output_dir, variable=self.variable, year=self.year, version=self.variable if self.variable != "" else "inclusive", workflow=config['execution'], batch_flavor=self.batch_flavor, slurm_partition=config['batchPartition'], slurm_memory=config['batchMemory'], slurm_max_runtime=config['batchMaxRuntime'], htcondor_partition=config['batchPartition'], htcondor_memory=config['batchMemory'], htcondor_max_runtime=config['batchMaxRuntime'])
+        tasks["Trees2WSData"] = Trees2WSData.req(
+            self,
+            output_dir=output_dir, 
+            workflow=config['execution'], 
+            slurm_partition=config['batchPartition'], 
+            slurm_memory=config['batchMemory'], 
+            slurm_max_runtime=config['batchMaxRuntime'], 
+            htcondor_partition=config['batchPartition'], 
+            htcondor_memory=config['batchMemory'], 
+            htcondor_max_runtime=config['batchMaxRuntime'])
         
         return tasks
     
     def create_branch_map(self):
         # Creating a branch map for the categories
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
+        config = self.get_input_config() 
 
         input_path = config['inputFiles']['Trees2WSData']
                     
@@ -236,19 +213,8 @@ class Background(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law
         return branch_map
 
     def output(self):
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
                     
         config = config["backgroundScriptCfg"]
         
@@ -272,21 +238,10 @@ class Background(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law
         return outputFileTargets
 
     def run(self):
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        print("Running Background task for category:", self.branch_data)
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
             
-        
         input_path = config['inputFiles']['Trees2WSData']
                     
         config = config["backgroundScriptCfg"]
@@ -305,9 +260,9 @@ class Background(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law
         config['intLumi'] = lumiMap[self.year]
                 
         if self.variable == '':
-            all_data_input_path = os.path.join(output_dir, "input_output_data", f"input_output_data_{self.year}/ws/allData.root")
+            all_data_input_path = os.path.join(output_dir, "Tree2WSData", f"input_output_data/ws/allData.root")
         else:
-            all_data_input_path = os.path.join(output_dir, "input_output_data", f"input_output_data_{self.variable}_{self.year}/ws/allData.root")
+            all_data_input_path = os.path.join(output_dir, "Tree2WSData", f"input_output_data_{self.variable}_{self.year}/ws/allData.root")
 
         cat, cat_offset = self.branch_data
         input_path = all_data_input_path
@@ -320,6 +275,7 @@ class Background(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law
             execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {output_dir}/Background/outdir_{config["ext"]}'], shell=True)
             safe_mkdir(temp_output_dir)
         else:
+            print("Creating output directories...")
             safe_mkdir(output_dir)
             safe_mkdir(os.path.join(output_dir, "Background"))
             safe_mkdir(os.path.join(output_dir, "Background", f"outdir_{config['ext']}"))
@@ -345,7 +301,7 @@ class Background(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law
             "--fTest"
         ]
         command = [script_path] + arguments
-        # print("Output:", command)
+        print("Background:", ' '.join(command))
         
         # Move to background folder
         original_dir = os.getcwd()

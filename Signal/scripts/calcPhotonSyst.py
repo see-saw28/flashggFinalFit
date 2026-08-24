@@ -36,8 +36,15 @@ def get_options():
   parser.add_option("--thresholdMean", dest='thresholdMean', default=0.05, type='float', help='Reject mean variations if larger than thresholdMean')
   parser.add_option("--thresholdSigma", dest='thresholdSigma', default=0.5, type='float', help='Reject mean variations if larger than thresholdSigma')
   parser.add_option("--thresholdRate", dest='thresholdRate', default=0.05, type='float', help='Reject mean variations if larger than thresholdRate')
+  parser.add_option("--doPlots", dest='doPlots', default=False, action='store_true', help='Save nominal/up/down histogram plots for each photon systematic')
+  parser.add_option("--plotFormat", dest='plotFormat', default='png,pdf', help='Comma-separated output formats for --doPlots')
   return parser.parse_args()
 (opt,args) = get_options()
+
+if opt.doPlots:
+  import matplotlib
+  matplotlib.use('Agg')
+  import matplotlib.pyplot as plt
 
 # RooRealVar to fill histograms
 mgg = ROOT.RooRealVar(opt.xvar,opt.xvar,125)
@@ -100,6 +107,65 @@ def getRateVar(_hists):
   x = (abs(rateVar['up'])+abs(rateVar['down']))/2
   if x!=x: return 0
   else: return min(x,opt.thresholdRate)
+
+def getFinalSystName(_s, _stype):
+  outputNuisanceExt = "_%s"%outputNuisanceExtMap[_stype] if outputNuisanceExtMap[_stype] != "" else ""
+  return "%s%s"%(_s,outputNuisanceExt)
+
+def sanitizeName(_name):
+  return re.sub(r'[^A-Za-z0-9_.-]+','_',_name)
+
+def histToArrays(_h):
+  edges = [_h.GetBinLowEdge(1)]
+  values = []
+  for ibin in range(1,_h.GetNbinsX()+1):
+    values.append(_h.GetBinContent(ibin))
+    edges.append(_h.GetBinLowEdge(ibin)+_h.GetBinWidth(ibin))
+  return edges, values
+
+def saveSystPlot(_hists, _proc, _cat, _stype, _sname, _finalName, _plotDir, _savedInfo):
+  colors = {'down':'#1f77b4','nominal':'#222222','up':'#d62728'}
+  linestyles = {'down':'--','nominal':'-','up':':'}
+  labels = {'down':'Down','nominal':'Nominal','up':'Up'}
+  fig, ax = plt.subplots(figsize=(8,6))
+  for htype in ['down','nominal','up']:
+    edges, values = histToArrays(_hists[htype])
+    label = "%s: μ=%.3f, σ=%.3f, rate=%.4g"%(labels[htype],_hists[htype].GetMean(),getEffSigma(_hists[htype]),_hists[htype].Integral())
+    ax.stairs(values, edges, label=label, color=colors[htype], linestyle=linestyles[htype], linewidth=1.8)
+  ax.set_xlabel(opt.xvar)
+  ax.set_ylabel("Events")
+  ax.set_xlim(115, 140)
+  ax.text(0.08,0.96,f"{_proc}, {_cat},\n{_stype}, {_sname}", transform=ax.transAxes, ha='left', va='top')
+  ax.legend(loc='best', frameon=False, fontsize=9, 
+            title=f"{_finalName}:\n Δμ={_savedInfo['mean']*100:.3f} %, Δσ={_savedInfo['sigma']*100:.3f} %, Δrate={_savedInfo['rate']*100:.3f} %")
+  fig.tight_layout()
+  for fmt in opt.plotFormat.split(","):
+    if fmt == '': continue
+    fig.savefig("%s/%s_%s_%s.%s"%(_plotDir,sanitizeName(_cat),sanitizeName(_proc),sanitizeName(_sname),fmt))
+  plt.close(fig)
+
+def saveSystPlotsFromData(_data, _plotDir):
+  if not os.path.isdir(_plotDir): os.makedirs(_plotDir)
+  print(" --> Saving photon systematic plots in: %s"%_plotDir)
+  for ir,r in _data.iterrows():
+    f = ROOT.TFile(r['inputWSFile'])
+    inputWS = f.Get(inputWSName__)
+    for stype in ['scales','scalesCorr','smears']:
+      for s in getattr(opt,stype).split(","):
+        if s == '': continue
+        finalName = getFinalSystName(s,stype)
+        if "%s_mean"%finalName not in _data.columns: continue
+        sname = "%s%s"%(inputNuisanceExtMap[stype],s)
+        hists = getHistograms(inputWS,r['nominalDataName'],sname)
+        savedInfo = {
+          'mean': r["%s_mean"%finalName],
+          'sigma': r["%s_sigma"%finalName],
+          'rate': r["%s_rate"%finalName]
+        }
+        saveSystPlot(hists,r['proc'],opt.cat,stype,sname,finalName,_plotDir,savedInfo)
+        for h in hists.values(): h.Delete()
+    inputWS.Delete()
+    f.Close()
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Define dataFrame
@@ -168,3 +234,7 @@ if not os.path.isdir("%s/outdir_%s/calcPhotonSyst"%(opt.outputDir,opt.ext)): os.
 if not os.path.isdir("%s/outdir_%s/calcPhotonSyst/pkl"%(opt.outputDir,opt.ext)): os.system("mkdir %s/outdir_%s/calcPhotonSyst/pkl"%(opt.outputDir,opt.ext))
 with open("%s/outdir_%s/calcPhotonSyst/pkl/%s.pkl"%(opt.outputDir,opt.ext,opt.cat),"wb") as f: pickle.dump(data,f) 
 print(" --> Successfully saved photon systematics as pkl file: %s/outdir_%s/calcPhotonSyst/pkl/%s.pkl"%(opt.outputDir,opt.ext,opt.cat))
+
+if opt.doPlots:
+  plotDir = "%s/outdir_%s/calcPhotonSyst/plots"%(opt.outputDir,opt.ext)
+  saveSystPlotsFromData(data,plotDir)

@@ -14,6 +14,7 @@ import math
 import re
 
 import luigi
+import yaml
 import law
 
 
@@ -23,13 +24,50 @@ law.contrib.load("htcondor")
 law.contrib.load("slurm")
 
 
+from law.parameter import NO_STR
+from law.workflow.base import BaseWorkflow
+
 class Task(law.Task):
     """
     Base task that we use to force a version parameter on all inheriting tasks, and that provides
     some convenience methods to create local file and directory targets at the default data path.
     """
+    variable = law.Parameter(default="", description="Variable to be used")
+    output_dir = law.Parameter(default="", description="Path to the output directory")
+    year = law.Parameter(default='2022', description="Year")
+    batch_flavor = law.Parameter(default="local", description="Batch system to use")
 
     version = luigi.Parameter()
+
+    @classmethod
+    def modify_param_values(cls, params):
+        if issubclass(cls, BaseWorkflow) and params.get("workflow") in (None, NO_STR):
+            params["workflow"] = "local"
+        return super().modify_param_values(params)
+    
+    def get_output_dir(self, truncate=False):
+        if self.output_dir == '':
+            output_dir = os.path.join(self.get_input_config(truncate)['outputFolder'], f'v{self.version}')
+        else:
+            output_dir = self.output_dir
+        return output_dir
+
+    def get_input_config(self, truncate=False, return_path=False, year=None):
+        if year is None:
+            year = self.year
+        if self.variable == '':
+            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{year[slice(4) if truncate else slice(None)]}_inclusive.yml")
+        else:
+            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/v{self.version}/{year[slice(4) if truncate else slice(None)]}_{self.variable}.yml")
+        
+        #Load central config file
+        with open(configYamlPath, 'r') as file:
+            config = yaml.safe_load(file)
+
+        if return_path:
+            return configYamlPath, config
+        
+        return config
 
     def store_parts(self):
         return (self.__class__.__name__, self.version)

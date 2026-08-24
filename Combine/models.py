@@ -3,6 +3,9 @@ models = {
 
   "mu_inclusive_wsyst":"",
 
+  "MH":"-P HiggsAnalysis.CombinedLimit.PhysicsModel:floatingHiggsMass \
+--PO higgsMassRange=120,130",
+
   "mu_fiducial":"-P HiggsAnalysis.CombinedLimit.PhysicsModel:multiSignalModel \
 --PO \"map=.*/ggh_in.*:r[1,0,2]\" \
 --PO \"map=.*/vbf_in.*:r[1,0,2]\" \

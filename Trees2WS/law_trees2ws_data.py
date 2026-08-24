@@ -45,49 +45,23 @@ class Trees2WSData(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
     def output(self):
 
         # Load the input configuration
-        if self.variable == '':
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-
-        if not os.path.exists(input_config):
-            print(f"[ERROR] {input_config} does not exist. Exiting...")
-            return
-
-        # Import the configuration options from the config file
-        with open(input_config, 'r') as file:
-            config = yaml.safe_load(file)
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
-            ws_dir = os.path.join(output_dir, 'input_output_data', f"input_output_data_{self.year}/ws/")
+            ws_dir = os.path.join(output_dir, 'Tree2WSData', f"input_output_data_{self.year}/ws/")
         else:
-            ws_dir = os.path.join(output_dir, 'input_output_data', f"input_output_data_{self.variable}_{self.year}/ws/")
+            ws_dir = os.path.join(output_dir, 'Tree2WSData', f"input_output_data_{self.variable}_{self.year}/ws/")
 
         return law.LocalFileTarget(os.path.join(ws_dir, "allData.root"))
 
     def run(self):
 
         # Load the input configuration
-        if self.variable == '':
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            input_config = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+        config = self.get_input_config()
 
-        if not os.path.exists(input_config):
-            print(f"[ERROR] {input_config} does not exist. Exiting...")
-            return
-
-        # Import the configuration options from the config file
-        with open(input_config, 'r') as file:
-            config = yaml.safe_load(file)
-        if self.output_dir == '':
-            output_dir = config["outputFolder"]
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
         
         if self.batch_flavor == "slurm/psi":
             # Have to use /scratch/batch_username/ for slurm/psi
@@ -98,15 +72,15 @@ class Trees2WSData(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
             
         # Step 1: Create the output directory if it doesn't exist
         if self.variable == '':
-            temp_ws_dir = os.path.join(temp_output_dir, 'input_output_data', f"input_output_data_{self.year}/ws/")
+            temp_ws_dir = os.path.join(temp_output_dir, 'Tree2WSData', f"input_output_data_{self.year}/ws/")
         else:
-            temp_ws_dir = os.path.join(temp_output_dir, 'input_output_data', f"input_output_data_{self.variable}_{self.year}/ws/")
+            temp_ws_dir = os.path.join(temp_output_dir, 'Tree2WSData', f"input_output_data_{self.variable}_{self.year}/ws/")
 
         if self.batch_flavor == "slurm/psi":
             if self.variable == '':
-                final_ws_dir = os.path.join(output_dir, 'input_output_data', f"input_output_data_{self.year}/ws/")
+                final_ws_dir = os.path.join(output_dir, 'Tree2WSData', f"input_output_data_{self.year}/ws/")
             else:
-                final_ws_dir = os.path.join(output_dir, 'input_output_data', f"input_output_data_{self.variable}_{self.year}/ws/")
+                final_ws_dir = os.path.join(output_dir, 'Tree2WSData', f"input_output_data_{self.variable}_{self.year}/ws/")
             # Have to use the xrdfs for the pnfs file system while on PSI Tier 3.
             execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {final_ws_dir}'], shell=True)
 

@@ -209,12 +209,7 @@ def manually_move_t3(src, dst):
             print(f"mv -f {file_path} {dst}/{filename}")
             execute_command([f"mv -f {file_path} {dst}/{filename}"], shell=True)
     
-class PrepareTheDirectory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
-    output_dir = law.Parameter(default = '', description="Path to the output directory")
-    variable = law.Parameter(default="", description="Variable to be used")
-    year = law.Parameter(default='2022', description="Year")
-
-    batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
+class PrepareTheDirectory(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
 
     # def requires(self):
     def workflow_requires(self):
@@ -225,27 +220,37 @@ class PrepareTheDirectory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkfl
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
+        # Load the input configuration
+        config = self.get_input_config()
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
         
         yieldsConfig = config['datacard_yields']
         
         bkgConfig = config["backgroundScriptCfg"]
             
-        tasks["MakeDatacard"] = MakeDatacard(output_dir=output_dir, variable=self.variable, year=self.year, version=self.variable if self.variable != "" else "inclusive", workflow=yieldsConfig["execution"], batch_flavor=self.batch_flavor, slurm_partition=yieldsConfig['batchPartition'], slurm_memory=yieldsConfig['batchMemory'], slurm_max_runtime=yieldsConfig['batchMaxRuntime'], htcondor_partition=yieldsConfig['batchPartition'], htcondor_memory=yieldsConfig['batchMemory'], htcondor_max_runtime=yieldsConfig['batchMaxRuntime'])
+        tasks["MakeDatacard"] = MakeDatacard.req(
+            self,
+            output_dir=output_dir, 
+            workflow=yieldsConfig["execution"], 
+            slurm_partition=yieldsConfig['batchPartition'], 
+            slurm_memory=yieldsConfig['batchMemory'], 
+            slurm_max_runtime=yieldsConfig['batchMaxRuntime'], 
+            htcondor_partition=yieldsConfig['batchPartition'], 
+            htcondor_memory=yieldsConfig['batchMemory'], 
+            htcondor_max_runtime=yieldsConfig['batchMaxRuntime'])
 
-        tasks["Background"] = Background(variable=self.variable, output_dir=output_dir, year=self.year, batch_flavor=self.batch_flavor, version=self.variable if self.variable != "" else "inclusive", slurm_partition=bkgConfig['batchPartition'], slurm_memory=bkgConfig['batchMemory'], slurm_max_runtime=bkgConfig['batchMaxRuntime'], htcondor_partition=bkgConfig['batchPartition'], htcondor_memory=bkgConfig['batchMemory'], htcondor_max_runtime=bkgConfig['batchMaxRuntime'], workflow=bkgConfig["execution"])
+        tasks["Background"] = Background.req(
+            self,
+            output_dir=output_dir,
+            slurm_partition=bkgConfig['batchPartition'],
+            slurm_memory=bkgConfig['batchMemory'],
+            slurm_max_runtime=bkgConfig['batchMaxRuntime'],
+            htcondor_partition=bkgConfig['batchPartition'],
+            htcondor_memory=bkgConfig['batchMemory'],
+            htcondor_max_runtime=bkgConfig['batchMaxRuntime'],
+            workflow=bkgConfig["execution"]
+        )
 
         return tasks
     
@@ -256,21 +261,14 @@ class PrepareTheDirectory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkfl
 
     def output(self):
                 
+        # Load the input configuration
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
+
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
 
         input_path = config['inputFiles']['Trees2WSData']
 
@@ -323,20 +321,13 @@ class PrepareTheDirectory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkfl
         background_suffix = f""
         
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
 
         #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         # Creating the Combine directory alongside the Models dir
         if self.batch_flavor == "slurm/psi":
@@ -351,8 +342,8 @@ class PrepareTheDirectory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkfl
         if signal_model_folder_name == background_model_folder_name:
             model_folder_name = signal_model_folder_name
             Model_dst_path = os.path.join(output_dir, 'Combine', model_folder_name)
-            background_dst_path = os.path.join(output_dir, 'Combine', model_folder_name, 'background'+background_suffix)
-            signal_dst_path = os.path.join(output_dir, 'Combine', model_folder_name, 'signal')
+            background_dst_path = os.path.join(output_dir, 'Combine',model_folder_name, 'background'+background_suffix)
+            signal_dst_path = os.path.join(output_dir, 'Combine',model_folder_name, 'signal')
             if self.batch_flavor == "slurm/psi":
                 execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {Model_dst_path}'], shell=True)
             else:
@@ -381,7 +372,7 @@ class PrepareTheDirectory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkfl
 
         # Copying relevant files in Models directory
         background_src_path = os.path.join(output_dir, "Background", f"outdir_{config['backgroundScriptCfg']['ext']}"+background_suffix)
-        signal_src_path = os.path.join(output_dir, f"outdir_packaged{config[f'packaged_{self.year}']['ext']}/")
+        signal_src_path = os.path.join(output_dir, 'Signal', f"outdir_packaged{config[f'packaged_{self.year}']['ext']}_{self.year}/")
 
         if self.batch_flavor == "slurm/psi":
             manually_copy_t3(background_src_path, background_dst_path)
@@ -431,13 +422,8 @@ class PrepareTheDirectory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkfl
         print("Combine directory sucessfully prepared.")
 
 
-class RunText2Workspace(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
-    output_dir = law.Parameter(default = '', description="Path to the output directory")
-    variable = law.Parameter(default="", description="Variable to be used")
-    year = law.Parameter(default='2022', description="Year")
-
-    batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
-
+class RunText2Workspace(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+    
     # def requires(self):
     def workflow_requires(self):
         workflow_reqs = super().workflow_requires()
@@ -447,23 +433,23 @@ class RunText2Workspace(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
+        # Load the input configuration
+        config = self.get_input_config()
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
             
         fitConfig = config['combine_fit']
 
-        tasks["PrepareTheDirectory"] = PrepareTheDirectory(output_dir=output_dir, variable=self.variable, year=self.year, version=self.variable if self.variable != "" else "inclusive", workflow=fitConfig["execution"], batch_flavor=self.batch_flavor, slurm_partition=fitConfig['batchPartition'], slurm_memory=fitConfig['batchMemory'], slurm_max_runtime=fitConfig['batchMaxRuntime'], htcondor_partition=fitConfig['batchPartition'], htcondor_memory=fitConfig['batchMemory'], htcondor_max_runtime=fitConfig['batchMaxRuntime'])
+        tasks["PrepareTheDirectory"] = PrepareTheDirectory.req(
+            self,
+            output_dir=output_dir, 
+            workflow=fitConfig["execution"], 
+            slurm_partition=fitConfig['batchPartition'], 
+            slurm_memory=fitConfig['batchMemory'], 
+            slurm_max_runtime=fitConfig['batchMaxRuntime'], 
+            htcondor_partition=fitConfig['batchPartition'], 
+            htcondor_memory=fitConfig['batchMemory'], 
+            htcondor_max_runtime=fitConfig['batchMaxRuntime'])
         
         return tasks
     
@@ -473,19 +459,10 @@ class RunText2Workspace(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow
         return branch_map
 
     def output(self):
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        # Load the input configuration
+        config = self.get_input_config()
+        
+        output_dir = self.get_output_dir()
 
         # Define the file paths
         if self.variable == '':
@@ -504,24 +481,21 @@ class RunText2Workspace(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow
 
     def run(self):      
 
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
+        if self.variable == "":
             mode = "mu_fiducial"
             datacard_name = f"Datacard_{self.year}"
+            
+        elif self.variable == "tuto":
+            mode = "mu_fiducial"
+            datacard_name = f"Datacard_{self.variable}_{self.year}"
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             mode = self.variable
             datacard_name = f"Datacard_{self.variable}_{self.year}"
+
         workspace_name = datacard_name
 
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
             
         script_path = os.path.join(os.environ["ANALYSIS_PATH"],"Combine/RunText2Workspace.py")
         
@@ -531,7 +505,7 @@ class RunText2Workspace(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow
             execute_command([f'mkdir -p $TARGET_PATH/Combine/{config["datacard_yields"]["sigModelWSDir"]}'], shell=True)
             execute_command([f'mkdir -p $TARGET_PATH/Combine/{config["datacard_yields"]["bkgModelWSDir"]}'], shell=True)
             # Keep t2w_jobs for debugging purposes
-            execute_command([f'mkdir -p $TARGET_PATH/Combine/t2w_jobs'], shell=True)    
+            execute_command([f'mkdir -p $TARGET_PATH/Combine/outdir_{self.year}_{self.variable}/t2w_jobs'], shell=True)    
             temp_output_dir = os.environ["TARGET_PATH"]
             
             # Copy concerning datacard + Model to scratch dir, cause of how RunText2Workspace works..
@@ -565,7 +539,7 @@ class RunText2Workspace(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow
             "python3",
             script_path,
             "--inputName", datacard_name,
-            "--outputDir", temp_output_dir,
+            "--outputDir", datacards_dir,
             "--outputName", workspace_name,
             "--mode", mode,
             "--common_opts", "-m 125.07 higgsMassRange=122,128",
@@ -575,7 +549,7 @@ class RunText2Workspace(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow
             arguments.append("--ext")
             arguments.append(f"{self.variable}")
         command = arguments
-        # print(command)
+        print("RunText2Workspace: " + " ".join(command))
         try:
             result = subprocess.run(command, check=True, text=True, capture_output=True)
             print("Script output:", result.stdout)
@@ -602,7 +576,8 @@ class RunText2Workspace(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow
             variable_key = self.variable if self.variable != '' else 'inclusive'
             update_override_file(override_path, self.year, variable_key, pdf_indices)
         
-class AsimovFitCategoryFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+        
+class AsimovFitCategoryFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -619,19 +594,9 @@ class AsimovFitCategoryFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Loca
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
+    
 
         fitConfig = config['combine_fit']
   
@@ -657,19 +622,8 @@ class AsimovFitCategoryFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Loca
     def output(self):
         current_branch = self.branch_data
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -690,23 +644,14 @@ class AsimovFitCategoryFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Loca
 
     def run(self):
         current_branch = self.branch_data
-        
+
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
+
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
-            
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-            fitFolderName = f'runFits_{self.variable}'
-                  
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+            fitFolderName = f'runFits_{self.variable}'  
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -732,7 +677,7 @@ class AsimovFitCategoryFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Loca
         # Split the year string into a list
         years = self.year.split("_")
 
-        if self.variable == '':
+        if self.variable in ["", "tuto"]:
             # Make all combinations of BMW and years: This also works if self.year is 2022_2023 in a combineCards workflow!
             pdf_indices = [f"pdfindex_{bmw}_{year}_13TeV" for bmw in BMW for year in years]
 
@@ -765,19 +710,23 @@ class AsimovFitCategoryFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Loca
                 print("Error executing script:", e.stderr)
             
         elif self.variable != '':
-            pdf_indices = combineVariableDict(self.variable, self.year)['pdfIndeces']
-            cache_key = (datacard_path,)
-            if cache_key not in _PDFINDEX_CACHE and os.path.exists(datacard_path):
-                datacard_pdf_indices = extract_pdf_indices(datacard_path)
-                if datacard_pdf_indices:
-                    _PDFINDEX_CACHE[cache_key] = datacard_pdf_indices
-            if cache_key in _PDFINDEX_CACHE:
-                pdf_indices = _PDFINDEX_CACHE[cache_key]
+            if self.variable != "MH":
+                pdf_indices = combineVariableDict(self.variable, self.year)['pdfIndeces']
+                cache_key = (datacard_path,)
+                if cache_key not in _PDFINDEX_CACHE and os.path.exists(datacard_path):
+                    datacard_pdf_indices = extract_pdf_indices(datacard_path)
+                    if datacard_pdf_indices:
+                        _PDFINDEX_CACHE[cache_key] = datacard_pdf_indices
+                if cache_key in _PDFINDEX_CACHE:
+                    pdf_indices = _PDFINDEX_CACHE[cache_key]
+            else:
+                pdf_indices = None
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
                 datacard_path,
-                "--freezeParameters", "MH",
+                # FIXME
+                "--freezeParameters", "r",
                 "-m", "125.07",
                 "-n", f"firstStep_{current_branch}",
                 "--cminDefaultMinimizerStrategy=0",
@@ -793,18 +742,22 @@ class AsimovFitCategoryFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Loca
                 "--saveFitResult",
                 "--floatOtherPOIs", "1"
             ]
-            arguments.extend(_save_specified_index_args(pdf_indices))
-            arguments.append("--setParameters")
-            arguments.append(f"""{",".join(combineVariableDict(self.variable, self.year)['paramStr'])}""")
-            command = arguments
-            # print(command)
-            try:
-                result = subprocess.run(command, check=True, text=True, capture_output=True)
-                print("Script output:", result.stdout)
-                print("Script executed successfully.")
-            except subprocess.CalledProcessError as e:
-                print("Error executing script:", e.stderr)
-                raise
+            if self.variable != 'MH':
+                arguments.extend(_save_specified_index_args(pdf_indices))
+                arguments.append("--setParameters")
+                arguments.append(f"""{",".join(combineVariableDict(self.variable, self.year)['paramStr'])}""")
+            else: 
+                arguments.append("MH=125.07")
+
+        command = arguments
+        print(command)
+        try:
+            result = subprocess.run(command, check=True, text=True, capture_output=True)
+            print("Script output:", result.stdout)
+            print("Script executed successfully.")
+        except subprocess.CalledProcessError as e:
+            print("Error executing script:", e.stderr)
+            raise
         
         # Copy the files back to pnfs if we are on slurm/psi
         if self.batch_flavor == "slurm/psi":
@@ -838,24 +791,16 @@ class CreateAsimovFitFirstStep(law.Task): #(law.Task): #(Task, HTCondorWorkflow,
         
     def requires(self):
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
             
         tasks = []
-        if self.variable == '':
-            cats = ["r"]
+        if self.variable in ["", "tuto"]:
+            cats = "r"
             version = "inclusive_v1"
+        elif self.variable == "MH":
+            cats = "MH"
+            version = "MH_v1"
         else:
             cats = ",".join(combineVariableDict(self.variable, self.year)['paramStrNoOne'])
             version = f"{self.variable}_v1"
@@ -873,19 +818,8 @@ class CreateAsimovFitFirstStep(law.Task): #(law.Task): #(Task, HTCondorWorkflow,
         return branch_map
 
     def output(self):
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -913,7 +847,7 @@ class CreateAsimovFitFirstStep(law.Task): #(law.Task): #(Task, HTCondorWorkflow,
 # optionally branching over a comma-separated list of categories. When
 # `cats` is set all bins are executed inside one HTCondor job to avoid
 # spawning one submission per differential bin.
-class AsimovFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -933,19 +867,8 @@ class AsimovFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
                
         tasks["CreateAsimovFitFirstStep"] = CreateAsimovFitFirstStep(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor)
         
@@ -982,19 +905,8 @@ class AsimovFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
     def output(self):
         current_cat, current_point = self._current_branch_info()
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -1016,21 +928,12 @@ class AsimovFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         current_cat, current_point = self._current_branch_info()
         
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
-            
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                     
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -1082,12 +985,12 @@ class AsimovFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
 
         firstStepPath = os.path.join(output_dir, 'Combine', fitFolderName, 'asimov', f"higgsCombinefirstStep_{current_cat}.MultiDimFit.mH125.07.root")
 
-        if self.variable == '':
+        if self.variable in ['', 'tuto']:
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
                 "-d", firstStepPath,
-                "--snapshotName", "MultiDimFit",
+                # "--snapshotName", "MultiDimFit",
                 "--freezeParameters", "MH",
                 "-m", "125.07",
                 "-n", f"AsimovPostFitScanFit_{current_cat}.POINTS.{current_point}.{current_point}",
@@ -1116,15 +1019,34 @@ class AsimovFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             else:
                 arguments.append("--setParameters")
                 arguments.append("r=1")
-            command = arguments
-            print(command)
-            try:
-                result = subprocess.run(command, check=True, text=True, capture_output=True)
-                print("Script output:", result.stdout)
-                print("Script executed successfully.")
-            except subprocess.CalledProcessError as e:
-                print("Error executing script:", e.stderr)
+        elif self.variable == 'MH':
             
+            arguments = [
+                "combineTool.py",
+                "-M", "MultiDimFit",
+                "-d", firstStepPath,
+                "--freezeParameters", "r",
+                "--setParameters", "r=1",
+                "-m", "125.38",
+                "-n", f"AsimovPostFitScanFit_{self.cat}.POINTS.{current_point}.{current_point}",
+                "--cminDefaultMinimizerStrategy=0",
+                "--algo", "grid",
+                "--points", f"{int(self.nPoints)}",
+                "--expectSignal", "1",
+                "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
+                "--X-rtd", "MINIMIZER_multiMin_hideConstants",
+                "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
+                "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
+                "-t", "-1",
+                "-P", f"{self.cat}",
+                "--firstPoint", f"{current_point}",
+                "--lastPoint", f"{current_point}",
+                "--saveFitResult",
+                "--floatOtherPOIs", "1",
+                "--alignEdges", "1",
+                "--snapshotName", "MultiDimFit",
+                "--setParameters", set_param_string,
+            ]   
         else:
             pdf_indices = combineVariableDict(self.variable, self.year)['pdfIndeces']
             cache_key = (datacard_path,)
@@ -1167,15 +1089,15 @@ class AsimovFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             ]
             arguments.extend(_scan_parameter_range_args(config, current_cat))
             arguments.extend(_save_specified_index_args(pdf_indices))
-            command = arguments
-            # print(command)
-            try:
-                result = subprocess.run(command, check=True, text=True, capture_output=True)
-                print("Script output:", result.stdout)
-                print("Script executed successfully.")
-            except subprocess.CalledProcessError as e:
-                print("Error executing script:", e.stderr)
-                raise
+        command = arguments
+        print(command)
+        try:
+            result = subprocess.run(command, check=True, text=True, capture_output=True)
+            print("Script output:", result.stdout)
+            print("Script executed successfully.")
+        except subprocess.CalledProcessError as e:
+            print("Error executing script:", e.stderr)
+            raise
             
         # Copy the files back to pnfs if we are on slurm/psi
         if self.batch_flavor == "slurm/psi":
@@ -1203,7 +1125,7 @@ class AsimovFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
 # Statistical scan task mirrors the syst version and therefore also supports
 # cat-merged execution through the optional csv list to keep the HTCondor
 # submission count low for differential measurements.
-class AsimovFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovFitCategoryStat(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -1223,19 +1145,8 @@ class AsimovFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
                 
         tasks["CreateAsimovFitFirstStep"] = CreateAsimovFitFirstStep(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor)
         
@@ -1271,19 +1182,8 @@ class AsimovFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
     def output(self):
         current_cat, current_point = self._current_branch_info()
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -1308,21 +1208,13 @@ class AsimovFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         current_cat, current_point = self._current_branch_info()
         
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                     
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
 
         # Needed for pdfindex discovery in the differential (variable != "") flow.
         # This points to the original text2workspace output, not the first-step snapshot file.
@@ -1376,12 +1268,12 @@ class AsimovFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
 
         firstStepPath = os.path.join(output_dir, 'Combine', fitFolderName, 'asimov', f"higgsCombinefirstStep_{current_cat}.MultiDimFit.mH125.07.root")
         
-        if self.variable == '':
+        if self.variable in ['', "tuto"]:
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
                 "-d", firstStepPath,
-                "--snapshotName", "MultiDimFit",
+                # "--snapshotName", "MultiDimFit",
                 "--freezeParameters", "allConstrainedNuisances,MH",
                 "-m", "125.07",
                 "-n", f"AsimovPostFitScanStat_{current_cat}.POINTS.{current_point}.{current_point}",
@@ -1410,15 +1302,35 @@ class AsimovFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             else:
                 arguments.append("--setParameters")
                 arguments.append("r=1")
-            command = arguments
-
-            print(command)
-            try:
-                result = subprocess.run(command, check=True, text=True, capture_output=True)
-                print("Script output:", result.stdout)
-                print("Script executed successfully.")
-            except subprocess.CalledProcessError as e:
-                print("Error executing script:", e.stderr)
+    
+        elif self.variable == "MH":
+    
+            arguments = [
+                "combineTool.py",
+                "-M", "MultiDimFit",
+                "-d", firstStepPath,
+                "--freezeParameters", "r,allConstrainedNuisances",
+                "--setParameters", "r=1",
+                "-m", "125.38",
+                "-n", f"AsimovPostFitScanStat_{self.cat}.POINTS.{current_point}.{current_point}",
+                "--cminDefaultMinimizerStrategy=0",
+                "--algo", "grid",
+                "--points", f"{int(self.nPoints)}",
+                "--expectSignal", "1",
+                "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
+                "--X-rtd", "MINIMIZER_multiMin_hideConstants",
+                "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
+                "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
+                "-t", "-1",
+                "-P", "MH",
+                "--firstPoint", f"{current_point}",
+                "--lastPoint", f"{current_point}",
+                "--saveFitResult",
+                "--floatOtherPOIs", "1",
+                "--alignEdges", "1",
+                "--snapshotName", "MultiDimFit",
+                # "--setParameters", "MH=125.08",
+            ]
             
         else:
             pdf_indices = combineVariableDict(self.variable, self.year)['pdfIndeces']
@@ -1462,15 +1374,16 @@ class AsimovFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             ]
             arguments.extend(_scan_parameter_range_args(config, current_cat))
             arguments.extend(_save_specified_index_args(pdf_indices))
-            command = arguments
-            # print(command)
-            try:
-                result = subprocess.run(command, check=True, text=True, capture_output=True)
-                print("Script output:", result.stdout)
-                print("Script executed successfully.")
-            except subprocess.CalledProcessError as e:
-                print("Error executing script:", e.stderr)
-                raise
+
+        command = arguments
+        print(command)
+        try:
+            result = subprocess.run(command, check=True, text=True, capture_output=True)
+            print("Script output:", result.stdout)
+            print("Script executed successfully.")
+        except subprocess.CalledProcessError as e:
+            print("Error executing script:", e.stderr)
+            raise
         
         # Copy the files back to pnfs if we are on slurm/psi
         if self.batch_flavor == "slurm/psi":
@@ -1495,7 +1408,7 @@ class AsimovFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         
         os.chdir(cwd)
         
-class CreateAsimovFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class CreateAsimovFit(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -1512,24 +1425,17 @@ class CreateAsimovFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
                         
-        if self.variable == '':
+        if self.variable in ['', 'tuto']:
             cat = "r"
             tasks["AsimovFitCategorySyst"] = AsimovFitCategorySyst(output_dir=output_dir, variable=self.variable, year=self.year, cat=cat, nPoints=config["combine_fit"]["asimov_numPoints"], version=f"inclusive_v1", workflow=config["combine_fit"]["execution"], batch_flavor=self.batch_flavor, slurm_partition=config["combine_fit"]['batchPartition'], slurm_memory=config["combine_fit"]['batchMemory'], slurm_max_runtime=config["combine_fit"]['batchMaxRuntime'], htcondor_partition=config["combine_fit"]['batchPartition'], htcondor_memory=config["combine_fit"]['batchMemory'], htcondor_max_runtime=config["combine_fit"]['batchMaxRuntime'], set_pdfidx_inclusives=self.set_pdfidx_inclusives)
             tasks["AsimovFitCategoryStat"] = AsimovFitCategoryStat(output_dir=output_dir, variable=self.variable, year=self.year, cat=cat, nPoints=config["combine_fit"]["asimov_numPoints"], version=f"inclusive_v1", workflow=config["combine_fit"]["execution"], batch_flavor=self.batch_flavor, slurm_partition=config["combine_fit"]['batchPartition'], slurm_memory=config["combine_fit"]['batchMemory'], slurm_max_runtime=config["combine_fit"]['batchMaxRuntime'], htcondor_partition=config["combine_fit"]['batchPartition'], htcondor_memory=config["combine_fit"]['batchMemory'], htcondor_max_runtime=config["combine_fit"]['batchMaxRuntime'], set_pdfidx_inclusives=self.set_pdfidx_inclusives)
+        elif self.variable == "MH":
+            cat = "MH"
+            tasks["AsimovFitCategorySyst"] = AsimovFitCategorySyst(output_dir=output_dir, variable=self.variable, year=self.year, cat=cat, nPoints=config["combine_fit"]["asimov_numPoints"], version=f"{self.variable}_v1", workflow=config["combine_fit"]["execution"], batch_flavor=self.batch_flavor, slurm_partition=config["combine_fit"]['batchPartition'], slurm_memory=config["combine_fit"]['batchMemory'], slurm_max_runtime=config["combine_fit"]['batchMaxRuntime'], htcondor_partition=config["combine_fit"]['batchPartition'], htcondor_memory=config["combine_fit"]['batchMemory'], htcondor_max_runtime=config["combine_fit"]['batchMaxRuntime'], set_pdfidx_inclusives=self.set_pdfidx_inclusives)
+            tasks["AsimovFitCategoryStat"] = AsimovFitCategoryStat(output_dir=output_dir, variable=self.variable, year=self.year, cat=cat, nPoints=config["combine_fit"]["asimov_numPoints"], version=f"{self.variable}_v1", workflow=config["combine_fit"]["execution"], batch_flavor=self.batch_flavor, slurm_partition=config["combine_fit"]['batchPartition'], slurm_memory=config["combine_fit"]['batchMemory'], slurm_max_runtime=config["combine_fit"]['batchMaxRuntime'], htcondor_partition=config["combine_fit"]['batchPartition'], htcondor_memory=config["combine_fit"]['batchMemory'], htcondor_max_runtime=config["combine_fit"]['batchMaxRuntime'], set_pdfidx_inclusives=self.set_pdfidx_inclusives)
         else:
             # Cat-merged differential fits run all categories within a single task
             # (single HTCondor submission) by passing the comma-separated list
@@ -1549,19 +1455,8 @@ class CreateAsimovFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
         return branch_map
 
     def output(self):
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -1572,8 +1467,8 @@ class CreateAsimovFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
             
         output += [os.path.join(output_dir, 'Combine', fitFolderName, 'asimov', 'scans')]
         
-        if self.variable == '':
-            cat = "r"
+        if self.variable in ['','tuto', 'MH']:
+            cat = "MH" if self.variable == "MH" else "r"
             output += [os.path.join(output_dir, 'Combine', fitFolderName, 'asimov', f'higgsCombineAsimovPostFitScanFit_{cat}.root')]
             output += [os.path.join(output_dir, 'Combine', fitFolderName, 'asimov', f'higgsCombineAsimovPostFitScanStat_{cat}.root')]
             output += [os.path.join(output_dir, 'Combine', fitFolderName, 'asimov', 'scans', f'scan_{cat}.root')]
@@ -1600,21 +1495,13 @@ class CreateAsimovFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
     def run(self):
         
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
             
                     
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         cwd = os.getcwd()
         
@@ -1632,8 +1519,8 @@ class CreateAsimovFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
             execute_command([f'mkdir -p {output_dir}/Combine/{fitFolderName}/asimov/scans'], shell=True)
             os.chdir(os.path.join(output_dir, 'Combine', fitFolderName, 'asimov'))
         
-        if self.variable == '':
-            cats = ["r"]
+        if self.variable in ['', 'tuto', 'MH']:
+            cats = ["MH"] if self.variable == "MH" else ["r"]
         else:
             cats = combineVariableDict(self.variable, self.year)['paramStrNoOne']
         
@@ -1710,7 +1597,9 @@ class CreateAsimovFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
                 os.chdir(os.path.join(output_dir, 'Combine', fitFolderName, 'asimov', 'scans'))
 
             arguments = [
-                "python3", f"{os.environ['CMSSW_BASE']}/bin/{os.environ['SCRAM_ARCH']}/plot1DScan.py",
+                "python3", 
+                f"{os.environ['CMSSW_BASE']}/bin/{os.environ['SCRAM_ARCH']}/plot1DScan.py",
+                # os.path.join(os.environ["ANALYSIS_PATH"],"Plots/plot1DScan_combined.py"),
                 # "plot1DScan.py",
                 os.path.join(output_dir, 'Combine', fitFolderName, 'asimov', f'higgsCombineAsimovPostFitScanFit_{cat}.root'),
                 "-o", f"scan_{cat}",
@@ -1731,7 +1620,7 @@ class CreateAsimovFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
                     "--translate", os.path.join(os.environ["ANALYSIS_PATH"], 'Combine', 'pois.json')
                 ]
             command = arguments
-            print(command)
+            print(' '.join(command))
             try:
                 result = subprocess.run(command, check=True, text=True, capture_output=True)
                 print("Script output:", result.stdout)
@@ -1762,7 +1651,7 @@ class CreateAsimovFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
             
         os.chdir(cwd)
         
-class AsimovImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -1778,19 +1667,8 @@ class AsimovImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
         
         impactConfig = config["combine_impacts"]    
         
@@ -1804,19 +1682,8 @@ class AsimovImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         return branch_map
 
     def output(self):        
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -1840,21 +1707,13 @@ class AsimovImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
     def run(self):
        
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -1877,8 +1736,10 @@ class AsimovImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             os.chdir(os.path.join(output_dir, 'Combine', fitFolderName, 'impact'))
 
         first_output = os.path.join(output_dir, 'Combine', fitFolderName, 'asimov')
-        if self.variable == '':
+        if self.variable in ['', 'tuto']:
             pdf_idx_param = "r"
+        elif self.variable == "MH":
+            pdf_idx_param = "MH"
         else:
             pdf_idx_param = combineVariableDict(self.variable, self.year)['paramStrNoOne'][0]
 
@@ -1902,7 +1763,7 @@ class AsimovImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         else:
             print(f"First-step file not found for PDF index extraction: {first_step_path}")
         
-        if self.variable == '':
+        if self.variable in ['', "tuto"]:
             set_param_string = "r=1"
             if pdfIdx:
                 set_param_string = f"{set_param_string},{pdfIdx}"
@@ -1913,9 +1774,8 @@ class AsimovImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
                 "--doInitialFit",
                 "--robustFit", "1",
                 "--freezeParameters", "MH",
-                "-m", "125.07",
+                "-m", "125.38",
                 "--cminDefaultMinimizerStrategy=0",
-                "--cminFallbackAlgo", "Minuit2,Migrad,1:10",
                 "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
                 "--X-rtd", "MINIMIZER_multiMin_hideConstants",
                 "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
@@ -1931,6 +1791,36 @@ class AsimovImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
                 print("Script executed successfully.")
             except subprocess.CalledProcessError as e:
                 print("Error executing script:", e.stderr)
+
+        elif self.variable in ["MH"]:
+                    set_param_string = "MH=125.38"
+                    if pdfIdx:
+                        set_param_string = f"{set_param_string},{pdfIdx}"
+                    arguments = [
+                        "combineTool.py",
+                        "-M", "Impacts",
+                        "-d", datacard_path,
+                        "--doInitialFit",
+                        "--robustFit", "1",
+                        "--freezeParameters", "MH",
+                        "-m", "125.07",
+                        "--cminDefaultMinimizerStrategy=0",
+                        "--cminFallbackAlgo", "Minuit2,Migrad,1:10",
+                "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
+                        "--X-rtd", "MINIMIZER_multiMin_hideConstants",
+                        "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
+                        "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
+                        "-t", "-1",
+                        "--setParameters", f"{set_param_string}"
+                    ]
+                    command = arguments
+                    # print(command)
+                    try:
+                        result = subprocess.run(command, check=True, text=True, capture_output=True)
+                        print("Script output:", result.stdout)
+                        print("Script executed successfully.")
+                    except subprocess.CalledProcessError as e:
+                        print("Error executing script:", e.stderr)
         else:
             set_param_string = ",".join(combineVariableDict(self.variable, self.year)['paramStr'])
             if pdfIdx:
@@ -1986,7 +1876,7 @@ class AsimovImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             
         os.chdir(cwd)
         
-class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -2002,19 +1892,8 @@ class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
         
         impactConfig = config["combine_impacts"]
             
@@ -2023,20 +1902,10 @@ class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         return tasks
 
     def create_branch_map(self):
-        
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
+
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -2084,8 +1953,10 @@ class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         #         var = it.Next()
         #     return res
 
-        if self.variable == '':
+        if self.variable in ['','tuto']:
             poiList = ["r"]
+        elif self.variable in ["MH"]:
+            poiList = ["MH"]
         else:
             poiList = combineVariableDict(self.variable, self.year)['paramStrNoOne']
         
@@ -2101,19 +1972,8 @@ class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
     def output(self):        
         current_param = self.branch_data
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -2138,21 +1998,13 @@ class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         current_param = self.branch_data
        
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -2175,8 +2027,10 @@ class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
             os.chdir(os.path.join(output_dir, 'Combine', fitFolderName, 'impact'))
 
         first_output = os.path.join(output_dir, 'Combine', fitFolderName, 'asimov')
-        if self.variable == '':
+        if self.variable in ['', 'tuto']:
             pdf_idx_param = "r"
+        elif self.variable == "MH":
+            pdf_idx_param = "MH"
         else:
             pdf_idx_param = combineVariableDict(self.variable, self.year)['paramStrNoOne'][0]
 
@@ -2200,7 +2054,7 @@ class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         else:
             print(f"First-step file not found for PDF index extraction: {first_step_path}")
 
-        if self.variable == '':
+        if self.variable in ['', "tuto"]:
             set_param_string = "r=1"
             if pdfIdx:
                 set_param_string = f"{set_param_string},{pdfIdx}"
@@ -2226,14 +2080,34 @@ class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
                 "-t", "-1",
                 "--setParameters", f"{set_param_string}"
             ]
-            command = arguments
-            # print(command)
-            try:
-                result = subprocess.run(command, check=True, text=True, capture_output=True)
-                print("Script output:", result.stdout)
-                print("Script executed successfully.")
-            except subprocess.CalledProcessError as e:
-                print("Error executing script:", e.stderr)
+
+        elif self.variable in ["MH"]:
+            set_param_string = "MH=125.07"
+            if pdfIdx:
+                set_param_string = f"{set_param_string},{pdfIdx}"
+            arguments = [
+                "combine",
+                "-M", "MultiDimFit",
+                "-d", datacard_path,
+                "--algo", "impact",
+                # "--redefineSignalPOIs", "r",
+                "--freezeParameters", "MH",
+                "-m", "125.07",
+                "-P", f"{current_param}",
+                "--floatOtherPOIs", "1",
+                "--saveInactivePOI", "1",
+                "--robustFit", "1",
+                "-n", f"_paramFit_Test_{current_param}",
+                "--cminDefaultMinimizerStrategy=0",
+                "--cminFallbackAlgo", "Minuit2,Migrad,1:10",
+                "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
+                "--X-rtd", "MINIMIZER_multiMin_hideConstants",
+                "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
+                "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
+                "-t", "-1",
+                "--setParameters", f"{set_param_string}"
+            ]
+            
         else:
             set_param_string = ",".join(combineVariableDict(self.variable, self.year)['paramStr'])
             if pdfIdx:
@@ -2260,14 +2134,16 @@ class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
                 "-t", "-1",
                 "--setParameters", f"{set_param_string}"
             ]
-            command = arguments
-            # print(command)
-            try:
-                result = subprocess.run(command, check=True, text=True, capture_output=True)
-                print("Script output:", result.stdout)
-                print("Script executed successfully.")
-            except subprocess.CalledProcessError as e:
-                print("Error executing script:", e.stderr)
+
+
+        command = arguments
+        # print(command)
+        try:
+            result = subprocess.run(command, check=True, text=True, capture_output=True)
+            print("Script output:", result.stdout)
+            print("Script executed successfully.")
+        except subprocess.CalledProcessError as e:
+            print("Error executing script:", e.stderr)
 
         # Copy the files back to pnfs if we are on slurm/psi
         if self.batch_flavor == "slurm/psi":
@@ -2292,7 +2168,7 @@ class AsimovImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         
         os.chdir(cwd)
         
-class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -2307,12 +2183,7 @@ class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
 
         if workflow_reqs:
             tasks.update(workflow_reqs)
-        
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
+                
         #Load central config file
         with open(configYamlPath, 'r') as file:
             config = yaml.safe_load(file)
@@ -2333,19 +2204,8 @@ class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         return branch_map
 
     def output(self):
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -2353,7 +2213,7 @@ class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             fitFolderName = f'runFits_{self.variable}'
 
         output = []
-        if self.variable == '':
+        if self.variable in ['', 'tuto', 'MH']:
             cat = "r"
             output += [os.path.join(output_dir, 'Combine', fitFolderName, 'impact', 'impacts')]
             output += [os.path.join(output_dir, 'Combine', fitFolderName, 'impact', 'impacts', f'impacts.pdf')]
@@ -2377,21 +2237,13 @@ class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
 
     def run(self):
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -2429,9 +2281,12 @@ class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             temp_output_dir = output_dir
 
         first_output = os.path.join(output_dir, 'Combine', fitFolderName, 'asimov')
-        if self.variable == '':
+        if self.variable in ['', 'tuto']:
             pdf_idx_param = "r"
             base_param_string = "r=1"
+        elif self.variable == "MH":
+            pdf_idx_param = "MH"
+            base_param_string = "MH=125.38"
         else:
             pdf_idx_param = combineVariableDict(self.variable, self.year)['paramStrNoOne'][0]
             base_param_string = ",".join(combineVariableDict(self.variable, self.year)['paramStr'])
@@ -2460,7 +2315,7 @@ class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         if pdfIdx:
             set_param_string = f"{base_param_string},{pdfIdx}"
 
-        if self.variable == '':
+        if self.variable in ['', 'tuto']:
             exclude_expr = config.get("combine_impacts", {}).get("exclude", "")
             named_params = _list_modelconfig_nuisances(datacard_path, ["r"], exclude_expr=exclude_expr)
             if not named_params:
@@ -2477,7 +2332,7 @@ class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             if set_param_string is not None:
                 arguments.extend(["--setParameters", set_param_string])
             command = arguments
-            # print(command)
+            print('AsimovImpactThirdStep(1): ' + ' '.join(command))
             try:
                 result = subprocess.run(command, check=True, text=True, capture_output=True)
                 print("Script output:", result.stdout)
@@ -2494,7 +2349,7 @@ class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
                 "--dropBkgModelParams"
             ]
             command = arguments
-            # print(command)
+            print('AsimovImpactThirdStep: ' + ' '.join(command))
             try:
                 result = subprocess.run(command, check=True, text=True, capture_output=True)
                 print("Script output:", result.stdout)
@@ -2510,14 +2365,51 @@ class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
 
             ]
             command = arguments
-            # print(command)
+            print(command)
             try:
                 result = subprocess.run(command, check=True, text=True, capture_output=True)
                 print("Script output:", result.stdout)
                 print("Script executed successfully.")
             except subprocess.CalledProcessError as e:
                 print("Error executing script:", e.stderr)
-                raise
+
+        elif self.variable in ['MH']:
+                    arguments = [
+                        "combineTool.py",
+                        "-M", "Impacts",
+                        "-d", datacard_path,
+                        "-m", "125.38",
+                        "-o", "impacts/impacts.json"
+                    ]
+                    if set_param_string is not None:
+                        arguments.extend(["--setParameters", set_param_string])
+                    command = arguments
+                    print('AsimovImpactThirdStep(1): ' + ' '.join(command))
+                    try:
+                        result = subprocess.run(command, check=True, text=True, capture_output=True)
+                        print("Script output:", result.stdout)
+                        print("Script executed successfully.")
+                    except subprocess.CalledProcessError as e:
+                        print("Error executing script:", e.stderr)
+        
+                    
+                        
+                    arguments = [
+                        "plotImpacts.py",
+                        "-i", "impacts/impacts.json",
+                        "-o", "impacts/impacts",
+                        "--POI", "MH"
+        
+                    ] 
+                    command = arguments
+                    print(command)
+                    try:
+                        result = subprocess.run(command, check=True, text=True, capture_output=True)
+                        print("Script output:", result.stdout)
+                        print("Script executed successfully.")
+                    except subprocess.CalledProcessError as e:
+                        print("Error executing script:", e.stderr)
+                        raise
         else:
             arguments = [
                 "combineTool.py",
@@ -2595,7 +2487,7 @@ class AsimovImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         os.chdir(cwd)
 
 
-class AsimovCovCorrHesse(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -2614,19 +2506,12 @@ class AsimovCovCorrHesse(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
         if self.variable == '':
             print("Running AsimovCovCorrHesse for inclusive does not make sense. Please specify a variable.")
             exit(1)
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
         
         hesseConfig = config["combine_hesse"]
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        r
         
         tasks["RunT2WS"] = RunText2Workspace(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor, workflow=hesseConfig["execution"], version=self.variable, slurm_partition=hesseConfig['batchPartition'], slurm_memory=hesseConfig['batchMemory'], slurm_max_runtime=hesseConfig['batchMaxRuntime'], htcondor_partition=hesseConfig['batchPartition'], htcondor_memory=hesseConfig['batchMemory'], htcondor_max_runtime=hesseConfig['batchMaxRuntime'])
         
@@ -2640,17 +2525,9 @@ class AsimovCovCorrHesse(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
         if self.variable == '':
             print("Running AsimovCovCorrHesse for inclusive does not make sense. Please specify a variable.")
             exit(1)
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -2684,17 +2561,10 @@ class AsimovCovCorrHesse(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
             exit(1)
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -2783,7 +2653,7 @@ class AsimovCovCorrHesse(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
             
         os.chdir(cwd)
         
-class AsimovCovCorr(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -2801,19 +2671,8 @@ class AsimovCovCorr(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
         
         if self.variable == '':
             print("Running AsimovCovCorr for inclusive does not make sense. Please specify a variable.")
@@ -2832,17 +2691,9 @@ class AsimovCovCorr(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
         if self.variable == '':
             print("Running AsimovCovCorr for inclusive does not make sense. Please specify a variable.")
             exit(1)
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -2873,17 +2724,10 @@ class AsimovCovCorr(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
             return True
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         # if self.variable == '':
         #     datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -2987,7 +2831,7 @@ class AsimovCovCorr(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
             
         os.chdir(cwd)
 
-class UnblindedFitSystSingle(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedFitSystSingle(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -3003,19 +2847,8 @@ class UnblindedFitSystSingle(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         fitConfig = config["combine_fit"] 
  
@@ -3034,19 +2867,8 @@ class UnblindedFitSystSingle(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
     def output(self):
         current_cat = self.branch_data
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -3069,11 +2891,9 @@ class UnblindedFitSystSingle(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         current_cat = self.branch_data
         
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                     
         #Load central config file
@@ -3187,7 +3007,7 @@ class UnblindedFitSystSingle(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
 
         os.chdir(cwd)
 
-class UnblindedFitStatSingle(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedFitStatSingle(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -3203,19 +3023,8 @@ class UnblindedFitStatSingle(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         fitConfig = config["combine_fit"]        
 
@@ -3235,19 +3044,8 @@ class UnblindedFitStatSingle(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
     def output(self):
         cat = self.branch_data
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -3269,11 +3067,9 @@ class UnblindedFitStatSingle(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         cat = self.branch_data
 
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                     
         #Load central config file
@@ -3402,7 +3198,7 @@ class UnblindedFitStatSingle(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         
         os.chdir(cwd)
         
-class UnblindedFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -3419,19 +3215,8 @@ class UnblindedFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
                
         fitConfig = config["combine_fit"]
 
@@ -3451,19 +3236,8 @@ class UnblindedFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
     def output(self):
         current_cat, current_point = self.branch_data
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -3486,11 +3260,9 @@ class UnblindedFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
         current_cat, current_point = self.branch_data
         
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                     
         #Load central config file
@@ -3617,7 +3389,7 @@ class UnblindedFitCategorySyst(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
             
         os.chdir(cwd)
         
-class UnblindedFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedFitCategoryStat(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -3634,19 +3406,8 @@ class UnblindedFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
         
         fitConfig = config["combine_fit"]
   
@@ -3666,19 +3427,8 @@ class UnblindedFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
     def output(self):
         cat, current_point = self.branch_data
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -3697,11 +3447,9 @@ class UnblindedFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
         cat, current_point = self.branch_data
 
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                     
         #Load central config file
@@ -3829,7 +3577,7 @@ class UnblindedFitCategoryStat(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
         
         os.chdir(cwd)
         
-class CreateUnblindedFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class CreateUnblindedFit(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -3845,19 +3593,8 @@ class CreateUnblindedFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         fitConfig = config["combine_fit"]
             
@@ -3874,19 +3611,8 @@ class CreateUnblindedFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
         return branch_map
 
     def output(self):
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -3919,21 +3645,13 @@ class CreateUnblindedFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
     def run(self):
         
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
             
                     
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
 
         cwd = os.getcwd()
         if self.batch_flavor == "slurm/psi":
@@ -4047,7 +3765,7 @@ class CreateUnblindedFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
                 
         os.chdir(cwd)
 
-class UnblindedCovCorrHesse(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -4063,19 +3781,8 @@ class UnblindedCovCorrHesse(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         tasks["RunT2WS"] = RunText2Workspace(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor, workflow=config["combine_fit"]["execution"], version=self.variable if self.variable != "" else "inclusive", slurm_partition=config["combine_fit"]['batchPartition'], slurm_memory=config["combine_fit"]['batchMemory'], slurm_max_runtime=config["combine_fit"]['batchMaxRuntime'], htcondor_partition=config["combine_fit"]['batchPartition'], htcondor_memory=config["combine_fit"]['batchMemory'], htcondor_max_runtime=config["combine_fit"]['batchMaxRuntime'])
         
@@ -4086,19 +3793,8 @@ class UnblindedCovCorrHesse(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
         return branch_map
 
     def output(self):        
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -4128,17 +3824,10 @@ class UnblindedCovCorrHesse(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             exit(1)
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -4213,7 +3902,7 @@ class UnblindedCovCorrHesse(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             
         os.chdir(cwd)
         
-class UnblindedCovCorr(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -4230,19 +3919,8 @@ class UnblindedCovCorr(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
             
         if self.variable == '':
             version = 'r'
@@ -4260,19 +3938,8 @@ class UnblindedCovCorr(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
         return branch_map
 
     def output(self):        
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -4303,17 +3970,10 @@ class UnblindedCovCorr(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
             exit(1)
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
 
         if self.batch_flavor == "slurm/psi":
             # Have to use /scratch/batch_username/ for slurm/psi
@@ -4415,7 +4075,7 @@ class UnblindedCovCorr(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
         os.chdir(cwd)
         
         
-class UnblindedImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -4431,19 +4091,8 @@ class UnblindedImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         impactConfig = config["combine_impacts"]
 
@@ -4456,19 +4105,8 @@ class UnblindedImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
         return branch_map
 
     def output(self):        
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -4489,11 +4127,9 @@ class UnblindedImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
     def run(self):
        
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
         #Load central config file
@@ -4606,7 +4242,7 @@ class UnblindedImpactFirstStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
             
         os.chdir(cwd)
         
-class UnblindedImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -4622,19 +4258,8 @@ class UnblindedImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Local
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         impactConfig = config["combine_impacts"]
             
@@ -4644,19 +4269,9 @@ class UnblindedImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Local
 
     def create_branch_map(self):
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-                  
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -4692,19 +4307,8 @@ class UnblindedImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Local
     def output(self):        
         current_param = self.branch_data
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -4729,11 +4333,9 @@ class UnblindedImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Local
         current_param = self.branch_data
        
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
         #Load central config file
@@ -4903,7 +4505,7 @@ class UnblindedImpactSecondStep(Task, HTCondorWorkflow, SlurmWorkflow, law.Local
             
         os.chdir(cwd)
         
-class UnblindedImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -4920,20 +4522,12 @@ class UnblindedImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
             tasks.update(workflow_reqs)
         
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             version = 'r'
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             version = self.variable
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         impactConfig = config["combine_impacts"]
             
@@ -4947,19 +4541,8 @@ class UnblindedImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
         return branch_map
 
     def output(self):
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -4993,21 +4576,12 @@ class UnblindedImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
     def run(self):
        
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
-            
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -5177,7 +4751,7 @@ class UnblindedImpactThirdStep(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
         os.chdir(cwd)
         
         
-class MggBestFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class MggBestFit(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -5193,29 +4767,18 @@ class MggBestFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(la
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         toyConfig = config["combine_mggToys"]
 
-        tasks["RunT2WS"] = RunText2Workspace(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor, workflow=toyConfig["execution"], version=self.variable if self.variable != "" else "inclusive", slurm_partition=toyConfig['batchPartition'], slurm_memory=toyConfig['batchMemory'], slurm_max_runtime=toyConfig['batchMaxRuntime'], htcondor_partition=toyConfig['batchPartition'], htcondor_memory=toyConfig['batchMemory'], htcondor_max_runtime=toyConfig['batchMaxRuntime'])
+        tasks["RunT2WS"] = RunText2Workspace(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor, workflow=toyConfig["execution"], version=self.variable if self.variable != "" else "inclusive", slurm_partition=toyConfig.get('batchPartition', None), slurm_memory=toyConfig.get('batchMemory', None), slurm_max_runtime=toyConfig.get('batchMaxRuntime', None), htcondor_partition=toyConfig.get('batchPartition', None), htcondor_memory=toyConfig.get('batchMemory', None), htcondor_max_runtime=toyConfig.get('batchMaxRuntime', None))
 
         return tasks
 
     def create_branch_map(self):
             
-        if self.variable == "":
+        if self.variable in ["", "tuto"]:
             cat_list = ["r"]
         else:
             cat_list = combineVariableDict(self.variable, self.year)['paramStrNoOne']
@@ -5226,19 +4789,8 @@ class MggBestFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(la
     def output(self):        
         cat = self.branch_data
                 
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -5262,21 +4814,13 @@ class MggBestFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(la
         cat = self.branch_data
        
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -5349,7 +4893,7 @@ class MggBestFit(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(la
         
         os.chdir(cwd)
         
-class MggToyGeneration(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -5366,46 +4910,53 @@ class MggToyGeneration(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
+        config = self.get_input_config()
 
         mggConfig = config['combine_mggToys']
         
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
 
         if convert_boolean_string(self.is_postfit):
             if self.variable == "":
                 version = 'r'
             else:
                 version = self.variable
-            tasks["MggBestFit"] = MggBestFit(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor, version=version, workflow=mggConfig['execution'], slurm_partition=mggConfig['batchPartition'], slurm_memory=mggConfig['batchMemory'], slurm_max_runtime=mggConfig['batchMaxRuntime'], htcondor_partition=mggConfig['batchPartition'], htcondor_memory=mggConfig['batchMemory'], htcondor_max_runtime=mggConfig['batchMaxRuntime'])
+            tasks["MggBestFit"] = MggBestFit.req(
+                self,
+                output_dir=output_dir, 
+                workflow=mggConfig['execution'], 
+                slurm_partition=mggConfig['batchPartition'], 
+                slurm_memory=mggConfig['batchMemory'], 
+                slurm_max_runtime=mggConfig['batchMaxRuntime'], 
+                htcondor_partition=mggConfig['batchPartition'], 
+                htcondor_memory=mggConfig['batchMemory'], 
+                htcondor_max_runtime=mggConfig['batchMaxRuntime'])
         else:
-            tasks["RunT2WS"] = RunText2Workspace(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor, workflow=mggConfig["execution"], version=self.variable if self.variable != "" else "inclusive", slurm_partition=mggConfig['batchPartition'], slurm_memory=mggConfig['batchMemory'], slurm_max_runtime=mggConfig['batchMaxRuntime'], htcondor_partition=mggConfig['batchPartition'], htcondor_memory=mggConfig['batchMemory'], htcondor_max_runtime=mggConfig['batchMaxRuntime'])
+            tasks["RunT2WS"] = RunText2Workspace.req(
+                self,
+
+                output_dir=output_dir, 
+                batch_flavor=self.batch_flavor, workflow=mggConfig["execution"], 
+                slurm_partition=mggConfig.get('batchPartition', None), 
+                slurm_memory=mggConfig.get('batchMemory', None), 
+                slurm_max_runtime=mggConfig.get('batchMaxRuntime', None), 
+                htcondor_partition=mggConfig.get('batchPartition', None), 
+                htcondor_memory=mggConfig.get('batchMemory', None), 
+                htcondor_max_runtime=mggConfig.get('batchMaxRuntime', None))
             
         return tasks
 
     def create_branch_map(self):
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
+
                   
         #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
+        config = self.get_input_config()
             
-        if self.variable == "":
+        if self.variable not in combineVariableDict[f'{self.year}'] and self.variable != "MH":
             cat_list = ["r"]
+        elif self.variable == "MH":
+            cat_list = ["MH"]
         else:
             cat_list = combineVariableDict(self.variable, self.year)['paramStrNoOne']
         nToys = config['combine_mggToys']['nToys']
@@ -5422,24 +4973,12 @@ class MggToyGeneration(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
     def output(self):        
         toy, cat = self.branch_data
                 
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
         else:
-            fitFolderName = f'runFits_{self.variable}'
+            fitFolderName = f'outdir_{self.year}_{self.variable}/runFits_{self.variable}'
             
         if convert_boolean_string(self.is_postfit):
             output = [os.path.join(output_dir, 'Combine', fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys')]
@@ -5467,21 +5006,13 @@ class MggToyGeneration(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
         toy, cat = self.branch_data
        
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
             
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-            fitFolderName = f'runFits_{self.variable}'
+            fitFolderName = f'outdir_{self.year}_{self.variable}/runFits_{self.variable}'
                   
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir() 
             
         if self.variable == '':
             datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
@@ -5497,7 +5028,7 @@ class MggToyGeneration(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
             if self.batch_flavor == "slurm/psi":
                 # Have to use /scratch/batch_username/ for slurm/psi
                 if "/work" in output_dir:
-                    execute_command([f'mkdir -p {output_dir}/Combine/{fitFolderName}/postFit/SplusBModels_{cat}/toys/filechecker'], shell=True)
+                    execute_command([f'mkdir -p {output_dir}/Combine/outdir_{self.year}_{self.variable}/{fitFolderName}/postFit/SplusBModels_{cat}/toys/filechecker'], shell=True)
                 else:   
                     execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {output_dir}/Combine/{fitFolderName}/postFit/SplusBModels_{cat}/toys/filechecker'], shell=True)
 
@@ -5721,12 +5252,12 @@ class MggToyGeneration(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
                 "-n", f"_{toy}_gen_step",
             ]
             arguments.append("--setParameters")
-            if self.variable == '':
+            if self.variable in ['', 'tuto', 'MH']:
                 arguments.append('r=1')
             else:
                 arguments.append(f"""{",".join(combineVariableDict(self.variable, self.year)['paramStr'])}""")
             command = arguments
-            # print(command)
+            print(' '.join(command))
             try:
                 result = subprocess.run(command, check=True, text=True, capture_output=True)
                 print("Script output:", result.stdout)
@@ -5784,12 +5315,12 @@ class MggToyGeneration(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
                 "--X-rtd", "MINIMIZER_multiMin_maskChannels=2"
             ]
             arguments.append("--setParameters")
-            if self.variable == '':
+            if self.variable in ['', 'tuto', 'MH']:
                 arguments.append('r=1')
             else:
                 arguments.append(f"""{",".join(combineVariableDict(self.variable, self.year)['paramStr'])}""")
             command = arguments
-            # print(command)
+            print(' '.join(command))
             try:
                 result = subprocess.run(command, check=True, text=True, capture_output=True)
                 print("Script output:", result.stdout)
@@ -5832,12 +5363,12 @@ class MggToyGeneration(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
                 "-n", f"_{toy}_throw_step"
             ]
             arguments.append("--setParameters")
-            if self.variable == '':
+            if self.variable in ['', 'tuto', 'MH']:
                 arguments.append('r=0')
             else:
                 arguments.append(f"""{(",".join(combineVariableDict(self.variable, self.year)['paramStr'])).replace("=1", "=0")}""")
             command = arguments
-            # print(command)
+            print(' '.join(command))
             try:
                 result = subprocess.run(command, check=True, text=True, capture_output=True)
                 print("Script output:", result.stdout)
@@ -5915,13 +5446,9 @@ class MggToyGeneration(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow)
         
         os.chdir(cwd)
         
-class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
-    output_dir = law.Parameter(default = '', description="Path to the output directory")
-    variable = law.Parameter(default="", description="Variable to be used")
-    year = law.Parameter(default='2022', description="Year")
+class MggDistribution(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     is_postfit = law.Parameter(default=False, description="Flag that signifies if toys are created for postfit mass distributions.")
 
-    batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
 
     # def requires(self):
     def workflow_requires(self):
@@ -5932,27 +5459,38 @@ class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
+
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
         
         mggConfig = config['combine_mggToys']
         
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
-        
         if config['combine_mggToys']['doBands']:
             if convert_boolean_string(self.is_postfit):
-                tasks["MggToyGeneration"] = MggToyGeneration(output_dir=output_dir, variable=self.variable, year=self.year, is_postfit=convert_boolean_string(self.is_postfit), batch_flavor=self.batch_flavor, version=f"{self.variable if self.variable != '' else 'r'}_postfit", workflow=mggConfig["execution"], slurm_partition=mggConfig['batchPartition'], slurm_memory=mggConfig['batchMemory'], slurm_max_runtime=mggConfig['batchMaxRuntime'], htcondor_partition=mggConfig['batchPartition'], htcondor_memory=mggConfig['batchMemory'], htcondor_max_runtime=mggConfig['batchMaxRuntime'])
+                tasks["MggToyGeneration"] = MggToyGeneration.req(
+                    self,
+                    output_dir=output_dir, 
+                    is_postfit=convert_boolean_string(self.is_postfit), 
+                    workflow=mggConfig["execution"], 
+                    slurm_partition=mggConfig.get('batchPartition', None), 
+                    slurm_memory=mggConfig.get('batchMemory', None), 
+                    slurm_max_runtime=mggConfig.get('batchMaxRuntime', None), 
+                    htcondor_partition=mggConfig.get('batchPartition', None), 
+                    htcondor_memory=mggConfig.get('batchMemory', None), 
+                    htcondor_max_runtime=mggConfig.get('batchMaxRuntime', None))
             else:
-                tasks["MggToyGeneration"] = MggToyGeneration(output_dir=output_dir, variable=self.variable, year=self.year, is_postfit=convert_boolean_string(self.is_postfit), batch_flavor=self.batch_flavor, version=f"{self.variable if self.variable != '' else 'r'}_prefit", workflow=mggConfig["execution"], slurm_partition=mggConfig['batchPartition'], slurm_memory=mggConfig['batchMemory'], slurm_max_runtime=mggConfig['batchMaxRuntime'], htcondor_partition=mggConfig['batchPartition'], htcondor_memory=mggConfig['batchMemory'], htcondor_max_runtime=mggConfig['batchMaxRuntime'])
+                tasks["MggToyGeneration"] = MggToyGeneration.req(
+                    self,
+                    output_dir=output_dir, 
+                    is_postfit=convert_boolean_string(self.is_postfit), 
+                    workflow=mggConfig["execution"], 
+                    slurm_partition=mggConfig.get('batchPartition', None), 
+                    slurm_memory=mggConfig.get('batchMemory', None), 
+                    slurm_max_runtime=mggConfig.get('batchMaxRuntime', None), 
+                    htcondor_partition=mggConfig.get('batchPartition', None), 
+                    htcondor_memory=mggConfig.get('batchMemory', None), 
+                    htcondor_max_runtime=mggConfig.get('batchMaxRuntime', None))
         else:
             if convert_boolean_string(self.is_postfit):
                 fitConfig = config["combine_fit"]
@@ -5963,7 +5501,9 @@ class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
         return tasks
 
     def create_branch_map(self):
-        if self.variable == '':
+        if self.variable == 'MH':
+            cat_list = ["MH"]
+        elif self.variable not in combineVariableDict[f'{self.year}']:
             cat_list = ["r"]
         else:
             cat_list = combineVariableDict(self.variable, self.year)['paramStrNoOne']
@@ -5973,23 +5513,17 @@ class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
     def output(self):
         cat = self.branch_data
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
+        output_dir = self.get_output_dir()
 
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
+        if self.variable not in combineVariableDict[f'{self.year}']:
+             
+            if self.variable == 'MH':
+                fitFolderName = 'runFits_MH'
+                reco_cats_with_bmw = ['BEST', 'MEDIUM', 'WORST']
 
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
-
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-            reco_cats_with_bmw = ['cat0', 'cat1', 'cat2']
+            else:
+                fitFolderName = f'runFits_{self.variable}'
+                reco_cats_with_bmw = ['cat0', 'cat1', 'cat2']
             if "_" in self.year:
                 cats = []
                 for y in self.year.split("_"):
@@ -5999,7 +5533,7 @@ class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
                 reco_cats_with_bmw = cats
 
         else:
-            fitFolderName = f'runFits_{self.variable}'
+            fitFolderName = f'outdir_{self.year}_{self.variable}/runFits_{self.variable}'
             reco_cats_with_bmw = [element for element in combineVariableDict(self.variable, self.year)['catsStrWithBMW'] if "_".join(cat.split("_")[2:]) in element]
             if "_" in self.year:
                 cats = []
@@ -6045,21 +5579,14 @@ class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
         cat = self.branch_data
        
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
 
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-            fitFolderName = f'runFits_{self.variable}'
+            fitFolderName = f'outdir_{self.year}_{self.variable}/runFits_{self.variable}'
 
         #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        output_dir = self.get_output_dir()  
+        config = self.get_input_config()
             
         main_dir = os.getcwd()
         
@@ -6138,7 +5665,7 @@ class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
                 arguments.append("--doToyVeto")
                 arguments.append("--saveToyYields")
             command = arguments
-            print(command)
+            print(' '.join(command))
             try:
                 result = subprocess.run(command, check=True, text=True, capture_output=True)
                 print("Script output:", result.stdout)
@@ -6202,10 +5729,10 @@ class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
                 os.chdir(os.path.join(output_dir, 'Combine', fitFolderName, 'preFit'))
             
             if self.variable == '':
-                datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.year}.root')
+                datacard_path = os.path.join(output_dir, 'Combine', f'outdir_{self.year}_{self.variable}', f'Datacard_{self.year}.root')
             else:
-                datacard_path = os.path.join(output_dir, 'Combine', f'Datacard_{self.variable}_{self.year}.root')
-                
+                datacard_path = os.path.join(output_dir, 'Combine', f'outdir_{self.year}_{self.variable}', f'Datacard_{self.variable}_{self.year}.root')
+
             if self.variable == '':
                 reco_cats_with_bmw = ['cat0', 'cat1', 'cat2']
 
@@ -6216,7 +5743,11 @@ class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
                         for c in reco_cats_with_bmw:
                             cats.append(f"Y{y2}_{c}")
                     reco_cats_with_bmw = cats
+            elif self.variable == 'tuto':
+                reco_cats_with_bmw = ['EBEB_highR9highR9', 'EBEB_highR9lowR9', 'EBEB_lowR9highR9', 'EBEE_highR9highR9', 'EBEE_highR9lowR9', 'EBEE_lowR9highR9', 'EEEB_highR9highR9', 'EEEB_highR9lowR9', 'EEEB_lowR9highR9', 'EEEE_incl']
 
+            elif self.variable == 'MH':
+                reco_cats_with_bmw = ['BEST', 'MEDIUM', 'WORST']
             else:
                 reco_cats_with_bmw = [element for element in combineVariableDict(self.variable, self.year)['catsStrWithBMW'] if "_".join(cat.split("_")[2:]) in element]
 
@@ -6235,20 +5766,23 @@ class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
                 "--cats", f"{','.join(reco_cats_with_bmw)}",
                 "--lumiLabel", get_lumi_label(self.year),
                 "--doZeroes",
-                "--blindingRegion", "125,125",
                 "--translateCats", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'cats.json')}",
                 "--doSumCategories",
                 "--doCatWeights",
                 "--saveWeights",
+                "--lumi", str(lumiMap[self.year]),
+                "--com", str(sqrtMap[self.year]),
                 "--ext", f"_{cat}",
                 "--POI", f"{cat}"
-            ]
+            ] + ([] if not self.is_postfit else ["--blindingRegion", "115,135", 
+                                                 "--mass", "125.38"
+                                                 ])
             if config['combine_mggToys']['doBands']:
                 arguments.append("--doBands")
                 arguments.append("--doToyVeto")
                 arguments.append("--saveToyYields")
             command = arguments
-            print(command)
+            print(' '.join(command))
             try:
                 result = subprocess.run(command, check=True, text=True, capture_output=True)
                 print("Script output:", result.stdout)
@@ -6280,7 +5814,7 @@ class MggDistribution(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):
         os.chdir(main_dir)
         
         
-class PValueCalculation(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class PValueCalculation(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     variable = law.Parameter(default="", description="Variable to be used")
     year = law.Parameter(default='2022', description="Year")
@@ -6296,19 +5830,8 @@ class PValueCalculation(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
         
         fitConfig = config["combine_fit"]
         tasks["CreateUnblindedFit"] = CreateUnblindedFit(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor, version=f"{self.variable if self.variable != '' else 'inclusive'}", workflow=fitConfig["execution"], slurm_partition=fitConfig['batchPartition'], slurm_memory=fitConfig['batchMemory'], slurm_max_runtime=fitConfig['batchMaxRuntime'], htcondor_partition=fitConfig['batchPartition'], htcondor_memory=fitConfig['batchMemory'], htcondor_max_runtime=fitConfig['batchMaxRuntime'])
@@ -6326,19 +5849,8 @@ class PValueCalculation(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow
 
     def output(self):
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -6360,11 +5872,9 @@ class PValueCalculation(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow
     def run(self):
        
         if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_inclusive.yml")
             fitFolderName = f'runFits_mu_fiducial'
 
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"],"config",f"{self.year}_{self.variable}.yml")
             fitFolderName = f'runFits_{self.variable}'
 
         #Load central config file

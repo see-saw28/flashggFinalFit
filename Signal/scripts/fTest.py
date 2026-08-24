@@ -72,8 +72,9 @@ df = pd.DataFrame(columns=['proc','sumEntries','nRV','nWV'])
 procYields = od()
 for proc in opt.procs.split(","):
   print("%s/output*M%s*%s.root"%(opt.inputWSDir,opt.mass,proc))
-  WSFileName = glob.glob("%s/output*M%s*%s.root"%(opt.inputWSDir,opt.mass,proc))[0]
-  f = ROOT.TFile(WSFileName,"read")
+  WSFileName = glob.glob("%s/output*M%s*%s*.root"%(opt.inputWSDir,opt.mass,proc))
+  print(WSFileName)
+  f = ROOT.TFile(WSFileName[0],"read")
   inputWS = f.Get(inputWSName__)
   if (len(proc.split("_")) <= 2) and (proc.split("_")[-1] in ["in", "out"]):
     d = reduceDataset(inputWS.data(f"{procToData(proc.split('_')[0])}_{procToData(proc.split('_')[-1])}_{opt.mass}_{sqrts__}_{opt.cat}"), aset)
@@ -92,7 +93,7 @@ for pidx, proc in enumerate(procsToFTest):
 
   # Split dataset to RV/WV: ssf requires input as dict (with mass point as key)
   datasets_RV, datasets_WV = od(), od()
-  WSFileName = glob.glob("%s/output*M%s*%s.root"%(opt.inputWSDir,opt.mass,proc))[0]
+  WSFileName = glob.glob("%s/output*M%s*%s*.root"%(opt.inputWSDir,opt.mass,proc))[0]
   f = ROOT.TFile(WSFileName,"read")
   inputWS = f.Get(inputWSName__)
   if (len(proc.split("_")) <= 2) and (proc.split("_")[-1] in ["in", "out"]):

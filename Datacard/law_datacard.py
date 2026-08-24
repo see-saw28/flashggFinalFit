@@ -40,11 +40,9 @@ def convert_boolean_string(string):
         return False
                 
 
-class MakeYieldsCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class MakeYieldsCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     inputWSDirMap = law.Parameter(description="Map. Format: year=inputWSDir (separate years by comma)")
-    output_dir = law.Parameter(description="Path to the output directory")
     ext = law.Parameter(default="earlyAnalysis", description="Extension to be used for output folder naming")
-    year = law.Parameter(default='2022', description="Year")
     cats = law.Parameter(description="List of categories separated with a comma.")
     procs = law.Parameter(description="Comma separated list of signal processes. auto = automatically inferred from input workspaces")
     mergeYears = law.Parameter(default=False, description="Merge category across years")
@@ -61,12 +59,10 @@ class MakeYieldsCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
     doSystematics = law.Parameter(default=False, description="Include systematics calculations and add to datacard")
     ignore_warnings = law.Parameter(default=False, description="Skip errors for missing systematics. Instead output warning message")
 
-    batch_flavor = law.Parameter(default="slurm", description="Batch system to use")
     # batch_username = law.Parameter(default="niharrin", description="Username for batch system. Currently only used when batch_flavor is slurm/psi.")
     
     mass = law.Parameter(default='125', description="Input workspace mass")
     nCats = law.Parameter(description="Number of Categories")
-    variable = law.Parameter(default="", description="Variable to be used")
 
     # def requires(self):
     def workflow_requires(self):
@@ -77,21 +73,16 @@ class MakeYieldsCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        # Load the input configuration
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
             
-        tasks["SignalPackaging"] = SignalPackaging(output_dir=output_dir, variable=self.variable, year=self.year, batch_flavor=self.batch_flavor)
+        tasks["SignalPackaging"] = SignalPackaging.req(
+            self, 
+            output_dir=output_dir,
+            ext=self.sigModelExt
+            )
         
         return tasks
     
@@ -159,7 +150,7 @@ class MakeYieldsCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
         if convert_boolean_string(self.skipCOWCorr): arguments.append("--skipCOWCorr")
 
         command = arguments
-        # print("Output:", command)
+        print("Output:", ' '.join(command))
         execute_command(command)
         
         if self.batch_flavor == "slurm/psi":
@@ -182,30 +173,15 @@ class MakeYieldsCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
             shutil.rmtree(temp_output_dir)
             
 
-class MakeYields(law.Task): #law.Task
-    variable = law.Parameter(default="", description="Variable to be used")
-    output_dir = law.Parameter(default = '', description="Path to the output directory")
-    year = law.Parameter(default='2022', description="Year")
-    
-    batch_flavor = law.Parameter(default="slurm", description="Batch system to use")
+class MakeYields(Task): #Task
     
     def requires(self):
         # req() is defined on all tasks and handles the passing of all parameter values that are
         # common between the required task and the instance (self)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+        # Load the input configuration
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
                 
         input_path = config['inputFiles']['Trees2WSData']
         
@@ -228,9 +204,9 @@ class MakeYields(law.Task): #law.Task
                 for j, currentEra in enumerate(allErasMap[currentYear]):
                     currentYearEra = currentYear + currentEra
                     if self.variable == '':
-                        currentYearEraInputOutput = os.path.join(output_dir, "input_output_{}{}/ws_signal".format(currentYear, currentEra))
+                        currentYearEraInputOutput = os.path.join(output_dir, "Tree2WS", "input_output_{}{}/ws_signal".format(currentYear, currentEra))
                     else:
-                        currentYearEraInputOutput = os.path.join(output_dir, "input_output_{}_{}{}/ws_signal".format(self.variable, currentYear, currentEra))
+                        currentYearEraInputOutput = os.path.join(output_dir, "Tree2WS", "input_output_{}_{}{}/ws_signal".format(self.variable, currentYear, currentEra))
                     if (i != len(allErasMap.keys()) - 1) and (j != len(allErasMap[currentYear]) - 1):  # Check if it's the last element of the last year
                         inputWSDirMap += currentYearEra + "=" + currentYearEraInputOutput + ","
                     else:
@@ -244,11 +220,11 @@ class MakeYields(law.Task): #law.Task
 
                 if self.variable == "":
                     currentYearEraInputOutput = os.path.join(
-                        output_dir, f"input_output_{self.year}{era_suffix}/ws_signal"
+                        output_dir, "Tree2WS", f"input_output_{self.year}{era_suffix}/ws_signal"
                     )
                 else:
                     currentYearEraInputOutput = os.path.join(
-                        output_dir, f"input_output_{self.variable}_{self.year}{era_suffix}/ws_signal"
+                        output_dir, "Tree2WS", f"input_output_{self.variable}_{self.year}{era_suffix}/ws_signal"
                     )
 
                 if j != len(eras) - 1:
@@ -256,51 +232,45 @@ class MakeYields(law.Task): #law.Task
                 else:
                     inputWSDirMap += f"{currentYearEra}={currentYearEraInputOutput}"
 
-        task_version = f"{self.year}_{self.variable if self.variable else 'inclusive'}_v1"
-        tasks = [MakeYieldsCategory(inputWSDirMap=inputWSDirMap, output_dir=output_dir, year=self.year, cats=datacard_config['cats'], procs=datacard_config['procs'], nCats=datacard_config['nCats'], ext=datacard_config['ext'], mergeYears=datacard_config['mergeYears'], skipBkg=datacard_config['skipBkg'], bkgScaler=datacard_config['bkgScaler'], sigModelWSDir=datacard_config['sigModelWSDir'], sigModelExt=f"packaged{packaged_config['ext']}", bkgModelWSDir=datacard_config['bkgModelWSDir'], bkgModelExt=datacard_config['bkgModelExt'], skipZeroes=datacard_config['skipZeroes'], skipCOWCorr=datacard_config['skipCOWCorr'], doSystematics=datacard_config['doSystematics'], ignore_warnings=datacard_config['ignore_warnings'], mass=datacard_config['mass'], variable=self.variable, version=task_version, workflow=datacard_config['execution'], batch_flavor=self.batch_flavor, slurm_partition=datacard_config['batchPartition'], slurm_memory=datacard_config['batchMemory'], slurm_max_runtime=datacard_config['batchMaxRuntime'], htcondor_partition=datacard_config['batchPartition'], htcondor_memory=datacard_config['batchMemory'], htcondor_max_runtime=datacard_config['batchMaxRuntime'])]
+        tasks = [MakeYieldsCategory.req(
+            self,
+            inputWSDirMap=inputWSDirMap, 
+            output_dir=output_dir, 
+            cats=datacard_config['cats'], 
+            procs=datacard_config['procs'], 
+            nCats=datacard_config['nCats'], 
+            ext=datacard_config['ext'], 
+            mergeYears=datacard_config['mergeYears'], 
+            skipBkg=datacard_config['skipBkg'], 
+            bkgScaler=datacard_config['bkgScaler'], 
+            sigModelWSDir=datacard_config['sigModelWSDir'], 
+            sigModelExt=f"packaged{packaged_config['ext']}", 
+            bkgModelWSDir=datacard_config['bkgModelWSDir'], 
+            bkgModelExt=datacard_config['bkgModelExt'], 
+            skipZeroes=datacard_config['skipZeroes'], 
+            skipCOWCorr=datacard_config['skipCOWCorr'], 
+            doSystematics=datacard_config['doSystematics'], 
+            ignore_warnings=datacard_config['ignore_warnings'], 
+            mass=datacard_config['mass'], 
+            workflow=datacard_config['execution'], 
+            slurm_partition=datacard_config['batchPartition'], 
+            slurm_memory=datacard_config['batchMemory'], 
+            slurm_max_runtime=datacard_config['batchMaxRuntime'], 
+            htcondor_partition=datacard_config['batchPartition'], 
+            htcondor_memory=datacard_config['batchMemory'], 
+            htcondor_max_runtime=datacard_config['batchMaxRuntime'])]
         
         return tasks
         
     def output(self):
-        # returns output folder
-        
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
-            
-        input_path = config['inputFiles']['Trees2WSData']
-        
-        datacard_config = config["datacard_yields"]
-        
-        output_paths = []
-        
-        output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"Datacards/yields_{datacard_config['ext']}")))
-        
-        if datacard_config['cats'] == 'auto':
-            datacard_config['cats'] = (extractListOfCatsFromHiggsDNAAllData(input_path))
-        datacard_config['nCats'] = len(datacard_config['cats'].split(","))
-
-        for cat in datacard_config['cats'].split(","):
-            output_paths.append(law.LocalFileTarget(os.path.join(output_dir, f"Datacards/yields_{datacard_config['ext']}/{cat}.pkl")))
-                                  
-        return output_paths
+        return self.input()
                 
     
     def run(self):
         
         return True
     
-class MakeDatacard(Task, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #law.Task
+class MakeDatacard(Task, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #Task
     variable = law.Parameter(default="", description="Variable to be used")
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     year = law.Parameter(default='2022', description="Year")
@@ -328,21 +298,13 @@ class MakeDatacard(Task, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #l
         if workflow_reqs:
             tasks.update(workflow_reqs)
         
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+        # Load the input configuration
+        output_dir = self.get_output_dir()
         
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-        
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
-        
-        tasks["MakeYields"] = MakeYields(variable=self.variable, output_dir=output_dir, year=self.year, batch_flavor=self.batch_flavor)
+        tasks["MakeYields"] = MakeYields.req(
+            self,
+            output_dir=output_dir
+            )
         
         return tasks    
 
@@ -351,8 +313,11 @@ class MakeDatacard(Task, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #l
         if self.variable == '':
             configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
         else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
+            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/v{self.version}/{self.year}_{self.variable}.yml")
         
+        # Load the input configuration
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()        
         #Load central config file
         with open(configYamlPath, 'r') as file:
             config = yaml.safe_load(file)
@@ -380,23 +345,13 @@ class MakeDatacard(Task, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #l
                 
     
     def run(self):
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_{self.variable}.yml")
-        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
+        # Load the input configuration
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()
             
         datacard_config = config["datacard"]
         yields_config = config["datacard_yields"]
         
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
-
     
         if self.batch_flavor == "slurm/psi":
             if "/work" in output_dir:
@@ -475,7 +430,7 @@ class MakeDatacard(Task, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #l
         if convert_boolean_string(datacard_config["saveDataFrame"]): arguments.append("--saveDataFrame")
     
         command = arguments
-        print("Output:", command)
+        print("Output:", ' '.join(command))
         try:
             result = subprocess.run(command, check=True, text=True, capture_output=True)
             print("Script output:", result.stdout)
