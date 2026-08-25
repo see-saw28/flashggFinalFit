@@ -66,6 +66,7 @@ const int blind_high = 135;
 int nBinsForMass = 4*(mgg_high-mgg_low);
 int nBinsSidebands = 4*(mgg_high-mgg_low - (blind_high - blind_low)); // 240 instead of 320
 const char* MASS_FIT_RANGE = "low,high";
+string lumiLabel_="";
 
 RooRealVar *intLumi_ = new RooRealVar("IntLumi","hacked int lumi", 1000.);
 
@@ -533,7 +534,7 @@ void plot(RooRealVar *mass, RooMultiPdf *pdfs, RooCategory *catIndex, RooDataSet
   if (BLIND) plot->SetMinimum(0.0001);
   plot->Draw();
   leg->Draw("same");
-  CMS_lumi(canv, 2022, 0);
+  CMS_lumi(canv, lumiLabel_.size() ? 0 : 2022, 0);
   ///start extra bit for ratio plot///
   // Mirror the (best-fit) pdf into a histogram with the same binning as the data histogram.
   std::unique_ptr<TH1> pdfHist;
@@ -668,7 +669,7 @@ void plot(RooRealVar *mass, map<string,RooAbsPdf*> pdfs, RooDataSet *data, strin
   if (BLIND) plot->SetMinimum(0.0001);
   plot->Draw();
   leg->Draw("same");
-  CMS_lumi(canv, 2022, 0);
+  CMS_lumi(canv, lumiLabel_.size() ? 0 : 2022, 0);
   canv->SaveAs(Form("%s.pdf",name.c_str()));
   canv->SaveAs(Form("%s.png",name.c_str())); // keep png twin alongside the pdf
   delete canv;
@@ -810,8 +811,9 @@ int main(int argc, char* argv[]){
     ("unblind",  									        "Dont blind plots")
     ("isFlashgg",  po::value<int>(&isFlashgg_)->default_value(1),  								    	        "Use Flashgg output ")
     ("isData",  po::value<bool>(&isData_)->default_value(0),  								    	        "Use Data not MC ")
-		("flashggCats,f", po::value<string>(&flashggCatsStr_)->default_value("UntaggedTag_0,UntaggedTag_1,UntaggedTag_2,UntaggedTag_3,UntaggedTag_4,VBFTag_0,VBFTag_1,VBFTag_2,TTHHadronicTag,TTHLeptonicTag,VHHadronicTag,VHTightTag,VHLooseTag,VHEtTag"),       "Flashgg category names to consider")
+    ("flashggCats,f", po::value<string>(&flashggCatsStr_)->default_value("UntaggedTag_0,UntaggedTag_1,UntaggedTag_2,UntaggedTag_3,UntaggedTag_4,VBFTag_0,VBFTag_1,VBFTag_2,TTHHadronicTag,TTHLeptonicTag,VHHadronicTag,VHTightTag,VHLooseTag,VHEtTag"),       "Flashgg category names to consider")
     ("year", po::value<string>(&year_)->default_value("2016"),       "Dataset year")
+    ("lumiLabel", po::value<string>(&lumiLabel_)->default_value(""),       "Luminosity label for plots")
     ("catOffset", po::value<int>(&catOffset)->default_value(0),       "Category numbering scheme offset")
     ("verbose,v",                                                                               "Run with more output")
   ;
@@ -825,6 +827,7 @@ int main(int argc, char* argv[]){
 
   if (vm.count("verbose")) verbose=true;
   if (vm.count("runFtestCheckWithToys")) runFtestCheckWithToys=true;
+  if (lumiLabel_.size()) lumi_sqrtS = lumiLabel_.c_str();
 
   if (!verbose) {
     RooMsgService::instance().setGlobalKillBelow(RooFit::ERROR);

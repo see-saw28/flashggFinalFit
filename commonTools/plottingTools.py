@@ -711,7 +711,7 @@ def plotSplines(_finalModel,_outdir="./",_nominalMass='125',splinesToPlot=['xs',
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Function for plotting final signal model: neat
 def plotSignalModel(_hists,_opt,_outdir=".",offset=0.02):
-  colorMap = {'2016':38,'2017':30,'2018':46,'2022preEE':38,'2022postEE':30, '2023preBPix':46,'2023postBPix':38, '2024': 15, '2025': 30, '2026': 46}
+  colorMap = {'2016':38,'2017':30,'2018':46,'2022preEE':38,'2022postEE':30, '2023preBPix':46,'2023postBPix':19, '2024': 15, '2025': 23, '2026': 46}
   canv = ROOT.TCanvas("c","c",650,600)
   canv.SetBottomMargin(0.12)
   canv.SetLeftMargin(0.15)
@@ -750,14 +750,14 @@ def plotSignalModel(_hists,_opt,_outdir=".",offset=0.02):
     leg1 = ROOT.TLegend(0.17+offset,0.45,0.4+offset,0.61)
     leg1.SetFillStyle(0)
     leg1.SetLineColor(0)
-    leg1.SetTextSize(0.03)
-    for year in _opt.years.split(","): leg1.AddEntry(_hists['pdf_%s'%year],"#splitline{%s:}{#scale[0.8]{#sigma_{eff} = %1.2f GeV}}"%(year,getEffSigma(_hists['pdf_%s'%year])),"l")
+    leg1.SetTextSize(0.025)
+    for year in _opt.years.split(","): leg1.AddEntry(_hists['pdf_%s'%year],"%s: #scale[0.8]{#sigma_{eff} = %1.2f GeV}"%(year,getEffSigma(_hists['pdf_%s'%year])),"l")
     leg1.Draw("Same")
 
     leg2 = ROOT.TLegend(0.15+offset,0.3,0.5+offset,0.45)
     leg2.SetFillStyle(0)
     leg2.SetLineColor(0)
-    leg2.SetTextSize(0.03)
+    leg2.SetTextSize(0.025)
     leg2.AddEntry(h_effSigma,"#sigma_{eff} = %1.2f GeV"%(0.5*(effSigma_high-effSigma_low)),"fl")
     leg2.Draw("Same")
   else:

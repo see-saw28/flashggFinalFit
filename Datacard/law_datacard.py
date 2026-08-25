@@ -11,7 +11,7 @@ from commonObjects import *
 
 from Signal.law_signal import *
 
-from framework import Task
+from framework import Task, MultiYearTask
 from framework import HTCondorWorkflow, SlurmWorkflow
 
 # Function to safely create a directory
@@ -173,9 +173,9 @@ class MakeYieldsCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
             shutil.rmtree(temp_output_dir)
             
 
-class MakeYields(Task): #Task
+class MakeYields(MultiYearTask): #Task
     
-    def requires(self):
+    def _requires_single(self):
         # req() is defined on all tasks and handles the passing of all parameter values that are
         # common between the required task and the instance (self)
         
@@ -212,29 +212,30 @@ class MakeYields(Task): #Task
                     else:
                         inputWSDirMap += currentYearEra + "=" + currentYearEraInputOutput
         else:
-            eras = allErasMap.get(f"{self.year}", [""])
+            for year in yearMap[self.year]:
+                eras = allErasMap.get(f"{year}", [""])
 
-            for j, currentEra in enumerate(eras):
-                era_suffix = "" if currentEra in ["", "None"] else currentEra
-                currentYearEra = f"{self.year}{era_suffix}"
+                for j, currentEra in enumerate(eras):
+                    era_suffix = "" if currentEra in ["", "None"] else currentEra
+                    currentYearEra = f"{year}{era_suffix}"
 
-                if self.variable == "":
-                    currentYearEraInputOutput = os.path.join(
-                        output_dir, "Tree2WS", f"input_output_{self.year}{era_suffix}/ws_signal"
-                    )
-                else:
-                    currentYearEraInputOutput = os.path.join(
-                        output_dir, "Tree2WS", f"input_output_{self.variable}_{self.year}{era_suffix}/ws_signal"
-                    )
+                    if self.variable == "":
+                        currentYearEraInputOutput = os.path.join(
+                            output_dir, "Tree2WS", f"input_output_{year}{era_suffix}/ws_signal"
+                        )
+                    else:
+                        currentYearEraInputOutput = os.path.join(
+                            output_dir, "Tree2WS", f"input_output_{self.variable}_{year}{era_suffix}/ws_signal"
+                        )
 
-                if j != len(eras) - 1:
-                    inputWSDirMap += f"{currentYearEra}={currentYearEraInputOutput},"
-                else:
-                    inputWSDirMap += f"{currentYearEra}={currentYearEraInputOutput}"
+                    if j != len(eras) + 1:
+                        inputWSDirMap += f"{currentYearEra}={currentYearEraInputOutput},"
+                    else:
+                        inputWSDirMap += f"{currentYearEra}={currentYearEraInputOutput}"
 
         tasks = [MakeYieldsCategory.req(
             self,
-            inputWSDirMap=inputWSDirMap, 
+            inputWSDirMap=inputWSDirMap[:-1], 
             output_dir=output_dir, 
             cats=datacard_config['cats'], 
             procs=datacard_config['procs'], 
@@ -270,7 +271,7 @@ class MakeYields(Task): #Task
         
         return True
     
-class MakeDatacard(Task, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #Task
+class MakeDatacard(MultiYearTask, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #Task
     variable = law.Parameter(default="", description="Variable to be used")
     output_dir = law.Parameter(default = '', description="Path to the output directory")
     year = law.Parameter(default='2022', description="Year")
@@ -308,24 +309,21 @@ class MakeDatacard(Task, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #T
         
         return tasks    
 
+    def _requires_single(self):
+        output_dir = self.get_output_dir()
+        return MakeYields.req(
+            self,
+            output_dir=output_dir
+        )
+
+
+
     def output(self):
-        # returns output folder
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/v{self.version}/{self.year}_{self.variable}.yml")
-        
+
         # Load the input configuration
         config = self.get_input_config()
         output_dir = self.get_output_dir()        
-        #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-            
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir
+    
             
         datacard_config = config["datacard"]
         
@@ -392,16 +390,15 @@ class MakeDatacard(Task, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #T
                     else:
                         years += currentYearEra
         else:
-            eras = allErasMap.get(self.year, [""])
+            for year in yearMap[self.year]:
+                eras = allErasMap.get(year, [""])
 
-            for j, currentEra in enumerate(eras):
-                era_suffix = "" if currentEra in ["", "None"] else currentEra
-                currentYearEra = f"{self.year}{era_suffix}"
+                for j, currentEra in enumerate(eras):
+                    era_suffix = "" if currentEra in ["", "None"] else currentEra
+                    currentYearEra = f"{year}{era_suffix}"
 
-                if j != len(eras) - 1:
-                    years += currentYearEra + ","
-                else:
-                    years += currentYearEra
+                    years += currentYearEra  + ","
+            years = years[:-1]  # Remove the trailing comma
 
         script_path = os.path.join(os.environ["ANALYSIS_PATH"], "Datacard/makeDatacard.py")
         arguments = [

@@ -64,6 +64,7 @@ using namespace boost;
 namespace po = boost::program_options;
 
 bool verbose_=false;
+string lumiLabel_="";
 
 RooRealVar *intLumi_ = new RooRealVar("IntLumi","hacked int lumi", 1000.);
 
@@ -703,7 +704,11 @@ void plotAllPdfs(RooRealVar *mgg, RooAbsData *data, RooMultiPdf *mpdf, RooCatego
   lat2.Draw("same");
 	canv->Modified();
 	canv->Update();
-  lumi_sqrtS = Form("%s (13 TeV, %d)",lumi_13TeV.Data(),year);
+  if (lumiLabel_.size()) {
+    lumi_sqrtS = lumiLabel_.c_str();
+  } else {
+    lumi_sqrtS = Form("%s (13 TeV, %d)",lumi_13TeV.Data(),year);
+  }
   std::string txt="";
   CMS_lumi( canv, 0,0,txt);
 	canv->Print(Form("%s.pdf",name.c_str()));
@@ -771,6 +776,7 @@ int main(int argc, char* argv[]){
 		("mhVal", po::value<double>(&mhvalue_)->default_value(125.),														"Choose the MH for the plots")
 		("higgsResolution", po::value<double>(&higgsResolution_)->default_value(1.),															"Starting point for scan")
 		("intLumi", po::value<float>(&intLumi)->default_value(0.),																"What intLumi in fb^{-1}")
+		("lumiLabel", po::value<string>(&lumiLabel_)->default_value(""),																"Luminosity label for plots")
 		("year", po::value<int>(&year_)->default_value(2016),																"Dataset year")
 		("sqrts,S", po::value<int>(&sqrts)->default_value(8),																"Which centre of mass is this data from?")
 		("isFlashgg",  po::value<int>(&isFlashgg_)->default_value(1),  								    	        "Use Flashgg output ")
@@ -792,7 +798,10 @@ int main(int argc, char* argv[]){
 	RooMsgService::instance().setGlobalKillBelow(RooFit::ERROR);
 	RooMsgService::instance().setSilentMode(true);
 	split(flashggCats_,flashggCatsStr_,boost::is_any_of(","));
-  lumi_13TeV =Form("%.1f fb^{-1}",intLumi);	
+  lumi_13TeV =Form("%.1f fb^{-1}",intLumi);
+  if (lumiLabel_.size()) {
+    lumi_sqrtS = lumiLabel_.c_str();
+  }
 	system(Form("mkdir -p %s",outDir.c_str()));
 	if (makeCrossCheckProfPlots) system(Form("mkdir -p %s/normProfs",outDir.c_str()));
 
@@ -1181,7 +1190,7 @@ int main(int argc, char* argv[]){
   line3->Draw();
   hdatasub->Draw("PESAME");
   // enf extra bit for ratio plot///
-    CMS_lumi( canv, 4, 0);
+    CMS_lumi( canv, lumiLabel_.size() ? 0 : 4, 0);
 		canv->Print(Form("%s/bkgplot_%s.pdf",outDir.c_str(),catname.c_str()));
 		canv->Print(Form("%s/bkgplot_%s.png",outDir.c_str(),catname.c_str()));
 		canv->Print(Form("%s/bkgplot_%s.C",outDir.c_str(),catname.c_str()));
@@ -1195,4 +1204,3 @@ int main(int argc, char* argv[]){
 
 		return 0;
 	}
-

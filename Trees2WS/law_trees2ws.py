@@ -17,7 +17,7 @@ from commonObjects import *
 from T2WSTools.STXS_tools import *
 from T2WSTools.diff_tools import *
 
-from framework import Task
+from framework import Task, MultiYearTask
 from framework import HTCondorWorkflow, SlurmWorkflow
 
 # Function to safely create a directory
@@ -55,9 +55,6 @@ def convert_boolean_string(string):
 class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     input_paths = law.Parameter(description="Paths to the data input ROOT files")
     era = law.Parameter(default="", description="Current era.")
-    output_dir = law.Parameter(description="Path to the output directory")
-    variable = law.Parameter(default='', description="Variable to be used for output folder naming")
-    year = law.Parameter(default='2022', description="Year")
     apply_mass_cut = law.Parameter(default=False, description="Apply mass cut")
     mass_cut_range = law.Parameter(default='100,180', description="Mass cut range")
     # input_mass = law.Parameter(default='125', description="Input mass")
@@ -69,7 +66,6 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
     doDiffSplitting = law.Parameter(default=False, description="Split output WS per differential bin")
     doInOutSplitting = law.Parameter(default=False, description="Split output WS into in/out fiducial based on some variable in the input trees (to be improved).")
 
-    batch_flavor = law.Parameter(default="slurm", description="Batch system to use")
 
     def create_branch_map(self):
         # map branch indexes to ascii numbers from 97 to 122 ("a" to "z")
@@ -722,14 +718,9 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             shutil.rmtree(temp_output_dir)  
 
 
-class Trees2WS(Task):
-    output_dir = law.Parameter(default = '', description="Path to the output directory")
-    variable = law.Parameter(default='', description="Variable to be used for output folder naming")
-    year = law.Parameter(default='2022', description="Year")
+class Trees2WS(MultiYearTask):
     
-    batch_flavor = law.Parameter(default="slurm", description="Batch system to use")
-    
-    def requires(self):
+    def _requires_single(self):
         # req() is defined on all tasks and handles the passing of all parameter values that are
         # common between the required task and the instance (self)
         

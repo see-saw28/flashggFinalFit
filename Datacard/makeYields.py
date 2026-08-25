@@ -102,6 +102,7 @@ for year in years:
     else: _cat = "%s_%s"%(opt.cat,year)
 
     # Input flashgg ws
+    print(inputWSDirMap)
     _inputWSFile = glob.glob("%s/*M%s*_%s.root"%(inputWSDirMap[year],opt.mass,proc))[0]
     if (len(proc.split("_")) <= 2) and (proc.split("_")[-1] in ["in", "out"]):
       _nominalDataName = "%s_%s_%s_%s_%s"%(_proc_s0,procToData(proc.split("_")[-1]),opt.mass,sqrts__,opt.cat)  

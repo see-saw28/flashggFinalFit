@@ -10,7 +10,7 @@ from commonTools import *
 from commonObjects import *
 from Trees2WS.law_trees2ws import *
 
-from framework import Task
+from framework import Task, MultiYearTask
 from framework import HTCondorWorkflow, SlurmWorkflow
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+ "/tools")
@@ -159,14 +159,14 @@ class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
             # Clean up the temporary directory
             shutil.rmtree(os.environ["TARGET_PATH"])
 
-class FTest(Task):
+class FTest(MultiYearTask):
     variable = law.Parameter(default="", description="Variable to be used")
     output_dir = law.Parameter(default="", description="Path to the output directory")
     year = law.Parameter(default='2022', description="Year")
     
     batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
     
-    def requires(self):
+    def _requires_single(self):
         # req() is defined on all tasks and handles the passing of all parameter values that are
         # common between the required task and the instance (self)
         
@@ -387,14 +387,14 @@ class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
             # Clean up the temporary directory
             shutil.rmtree(os.environ["TARGET_PATH"])
 
-class CalcPhotonSyst(Task):
+class CalcPhotonSyst(MultiYearTask):
     variable = law.Parameter(default="", description="Variable to be used")
     output_dir = law.Parameter(default="", description="Path to the output directory")
     year = law.Parameter(default='2022', description="Year")
 
     batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
 
-    def requires(self):
+    def _requires_single(self):
         # req() is defined on all tasks and handles the passing of all parameter values that are
         # common between the required task and the instance (self)
         
@@ -469,12 +469,10 @@ class CalcPhotonSyst(Task):
         return tasks
     
     def output(self):
-
         return self.input()
                 
     
     def run(self):
-
         return True
     
 
@@ -641,9 +639,9 @@ class SignalFitCategoryProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
             # Clean up the temporary directory
             shutil.rmtree(os.environ["TARGET_PATH"])
 
-class SignalFit(Task):
+class SignalFit(MultiYearTask):
     
-    def requires(self):
+    def _requires_single(self):
         
 
         # Load the input configuration
@@ -722,9 +720,7 @@ class SignalFit(Task):
         return tasks
     
     def output(self):
-
         return self.input()
-
 
                 
     def run(self):
@@ -732,6 +728,12 @@ class SignalFit(Task):
 
 
 class SignalTask(Task):
+    ext = law.Parameter(default="packaged", description="Extension to be used for output folder naming")
+
+    def get_ext(self):
+        return f"{self.ext}_{self.year}"
+
+class SignalMultiTask(MultiYearTask):
     ext = law.Parameter(default="packaged", description="Extension to be used for output folder naming")
 
     def get_ext(self):
@@ -765,7 +767,7 @@ class SignalPackagingCategory(SignalTask, HTCondorWorkflow, SlurmWorkflow, law.L
             config = self.get_input_config(year=year)
             output_dir = self.get_output_dir()
                                     
-            tasks[f"SignalFit_{year}"] = SignalFit.req(self, output_dir=output_dir, year=year)
+            tasks[f"SignalFit_{year}"] = SignalFit.req(self, output_dir=output_dir, years=year)
                     
         return tasks
     
@@ -895,9 +897,9 @@ class SignalPackagingCategory(SignalTask, HTCondorWorkflow, SlurmWorkflow, law.L
             # Clean up the temporary directory
             shutil.rmtree(os.environ["TARGET_PATH"])
 
-class SignalPackaging(SignalTask):
+class SignalPackaging(SignalMultiTask):
 
-    def requires(self):
+    def _requires_single(self):
         
 
         # Load the input configuration
@@ -1005,13 +1007,7 @@ class SignalPlotCategory(SignalTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
             tasks.update(workflow_reqs)
 
         if convert_boolean_string(self.require_packaging):
-            tasks["SignalPackaging"] = SignalPackaging.req(
-                self,
-                variable=self.variable,
-                output_dir=self.output_dir,
-                year=self.year,
-                batch_flavor=self.batch_flavor,
-            )
+            tasks["SignalPackaging"] = SignalPackaging.req(self, years=self.year)
 
         return tasks
 
@@ -1028,7 +1024,7 @@ class SignalPlotCategory(SignalTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
         if self.plot_input_dir != "":
             return self.plot_input_dir
         if self.output_dir != "":
-            return os.path.join(self.output_dir, "Signal",f"outdir_{self.get_ext()}")
+            return os.path.join(self.output_dir, "Signal", f"outdir_{self.get_ext()}")
         return os.path.join(self.signal_path(), "Signal", f"outdir_{self.get_ext()}")
 
     def plot_path(self):
@@ -1106,13 +1102,7 @@ class SignalPlot(SignalTask):
 
 
     def packaged_config(self):
-        if self.variable == '':
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/{self.year}_inclusive.yml")
-        else:
-            configYamlPath = os.path.join(os.environ["ANALYSIS_PATH"], f"config/v{self.version}/{self.year}_{self.variable}.yml")
-
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
+        config = self.get_input_config()
 
         packagedConfig = config[f"packaged_{self.year}"]
 
@@ -1146,7 +1136,7 @@ class SignalPlot(SignalTask):
         return True
 
 
-class SignalPlotEverything(SignalTask):
+class SignalPlotEverything(SignalMultiTask):
     signal_dir = law.Parameter(default="", description="Signal directory containing outdir_<ext>")
     plot_input_dir = law.Parameter(default="", description="Input directory containing CMS-HGG_sigfit_<ext>_<cat>.root files")
     plot_output_dir = law.Parameter(default="", description="Output directory for RunPlotter plots")
@@ -1184,7 +1174,7 @@ class SignalPlotEverything(SignalTask):
             return years + [",".join(years)]
         return years
 
-    def requires(self):
+    def _requires_single(self):
         tasks = []
         cat_modes = ["", "all", "wall"]
         print(f"SignalPlotEverything: Plotting for years: {self.plot_years()} and categories: {cat_modes}")

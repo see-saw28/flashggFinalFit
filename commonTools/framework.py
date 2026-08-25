@@ -82,6 +82,38 @@ class Task(law.Task):
     def local_target(self, *path):
         return law.LocalFileTarget(self.local_path(*path))
 
+class MultiYearTask(Task):
+    years = law.CSVParameter(
+        default=("2022",),
+        description="years to run",
+        brace_expand=True,
+        parse_empty=True,
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if not self.years:
+            raise ValueError("years must contain at least one year")
+
+        self.year = str(self.years[0])
+
+    def _requires_single(self):
+        raise NotImplementedError
+
+    def requires(self):
+        if len(self.years) > 1:
+            return {
+                str(y): type(self).req(
+                    self,
+                    years=(str(y),),
+                )
+                for y in self.years
+            }
+
+        return self._requires_single()
+
+
 
 class HTCondorWorkflow(law.htcondor.HTCondorWorkflow):
     """
