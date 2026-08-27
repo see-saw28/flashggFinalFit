@@ -184,7 +184,7 @@ datacard_clean:
 combine_fit:
   asimov_numPoints: 30 # Number of points the Asimov generator should generate for the NLL scan
   unblindedFit_numPoints: 100 
-  setParameterRange: "r=0,2"
+  setParameterRange: "MH=124,126"
   cminApproxPreFitTolerance: 0.01
   rMin: 0.7
   rMax: 1.6
@@ -216,3 +216,6 @@ combine_mggToys:
   loadSnapshot: 'MultiDimFit'
   doBands: True
   execution: 'local'
+  batchPartition: "short" # Slurm partition to use for job submission
+  batchMemory: 4000 # Slurm memory to use for job submission
+  batchMaxRuntime: "01:00:00" # Slurm max runtime to use

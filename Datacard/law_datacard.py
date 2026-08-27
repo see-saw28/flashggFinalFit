@@ -10,6 +10,7 @@ from pdfindex_utils import extract_pdf_indices, update_override_file
 from commonObjects import *
 
 from Signal.law_signal import *
+from Background.law_background import *
 
 from framework import Task, MultiYearTask
 from framework import HTCondorWorkflow, SlurmWorkflow
@@ -81,9 +82,16 @@ class MakeYieldsCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflo
         tasks["SignalPackaging"] = SignalPackaging.req(
             self, 
             output_dir=output_dir,
-            ext=self.sigModelExt
+            ext=self.sigModelExt,
+            years=self.year
             )
-        
+
+        tasks["Background"] = Background.req(
+            self,
+            output_dir=output_dir,
+            years=self.year,
+            )
+
         return tasks
     
     
@@ -272,11 +280,6 @@ class MakeYields(MultiYearTask): #Task
         return True
     
 class MakeDatacard(MultiYearTask, SlurmWorkflow, HTCondorWorkflow, law.LocalWorkflow): #Task
-    variable = law.Parameter(default="", description="Variable to be used")
-    output_dir = law.Parameter(default = '', description="Path to the output directory")
-    year = law.Parameter(default='2022', description="Year")
-
-    batch_flavor = law.Parameter(default="slurm", description="Batch system to use")
     # batch_partition = law.Parameter(default="short", description="Partition to use for the batch job submission")
     # batch_memory = law.Parameter(default=4000, description="Memory to use for the batch job submission")
     # batch_max_runtime = law.Parameter(default="01:00:00", description="Max runtime to use for the batch job submission")

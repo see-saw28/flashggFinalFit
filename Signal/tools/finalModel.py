@@ -81,9 +81,13 @@ def initialiseXSBR():
   return xsbr
 
 def getSignalShapeNuisanceParamName(nuisanceName):
+
+  return nuisanceName
   if (nuisanceName == 'deltafracright') or nuisanceName.startswith('Scale') or nuisanceName.startswith('Smearing'):
     return "CMS_HIG26007_%s"%nuisanceName
   return "%s_%s"%(outputWSNuisanceTitle__,nuisanceName)
+
+
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~   
 class FinalModel:
@@ -234,11 +238,11 @@ class FinalModel:
 
           # Hard-coded split for Zmmg scale nuisances:
           # correlate 2022 and 2023 with each other, but keep 2024 separate.
-          if (sType == 'scalesCorr') and (sName in ['ScaleEBZmmg', 'ScaleEEZmmg']):
+          if (sType == 'scalesCorr') and ('zmmg' in sName.lower()):
             if isZmmgScale2022Or2023Label(self.year):
               nuisanceName = f"{sName}_2022_2023"
-            elif isZmmgScale2024Label(self.year):
-              nuisanceName = f"{sName}_2024"
+            else:
+              nuisanceName = f"{sName}_{self.year}"
 
           # Extract constant values and make nuisance
           if sType == 'scalesGlobal': cMean, cSigma, cRate = 0.,0.,0.

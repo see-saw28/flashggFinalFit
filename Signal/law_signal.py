@@ -519,8 +519,8 @@ class SignalFitCategoryProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalW
 
         output_dir = self.get_output_dir(truncate=True)
             
-        tasks["FTest"] = FTest.req(self, output_dir=output_dir, year=year)
-        tasks["CalcPhotonSyst"] = CalcPhotonSyst.req(self, output_dir=output_dir, year=year)
+        tasks["FTest"] = FTest.req(self, output_dir=output_dir, years=year)
+        tasks["CalcPhotonSyst"] = CalcPhotonSyst.req(self, output_dir=output_dir, years=year)
 
         return tasks
     

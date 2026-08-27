@@ -32,12 +32,12 @@ class Task(law.Task):
     Base task that we use to force a version parameter on all inheriting tasks, and that provides
     some convenience methods to create local file and directory targets at the default data path.
     """
-    variable = law.Parameter(default="", description="Variable to be used")
+    variable = law.Parameter(default="MH", description="Variable to be used")
     output_dir = law.Parameter(default="", description="Path to the output directory")
     year = law.Parameter(default='2022', description="Year")
     batch_flavor = law.Parameter(default="local", description="Batch system to use")
 
-    version = luigi.Parameter()
+    version = luigi.Parameter(default="1")
 
     @classmethod
     def modify_param_values(cls, params):

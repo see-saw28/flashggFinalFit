@@ -95,9 +95,12 @@ def writeSystematic(f,d,s,options,stxsMergeScheme=None,scaleCorrScheme=None):
       if any(isZmmgScale2022Or2023Label(year) for year in years):
         lsyst = "%-70s  param    %-6s %-6s"%(f"{stitle}_2022_2023",s['mean'],s['sigma'])
         f.write("%s\n"%lsyst)
-      if any(isZmmgScale2024Label(year) for year in years):
-        lsyst = "%-70s  param    %-6s %-6s"%(f"{stitle}_2024",s['mean'],s['sigma'])
-        f.write("%s\n"%lsyst)
+      for year in years:
+        year = str(year).strip()
+        if isZmmgScale2022Or2023Label(year):
+            continue
+        lsyst = "%-70s  param    %-6s %-6s" % (f"{stitle}_{year}",s["mean"],s["sigma"])
+        f.write("%s\n" % lsyst)
       return True
     # If not correlated: separate nuisance per year
     if s['mode'] in ['scales','smears']:
