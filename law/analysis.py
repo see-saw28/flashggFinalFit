@@ -158,7 +158,7 @@ class FinalFitsYear(Task):
             hesseConfig = config["combine_hesse"]
             tasks["PValueCalculation"] = PValueCalculation.req(self, output_dir=output_dir, workflow=self.batch_system, slurm_partition=hesseConfig['batchPartition'], slurm_memory=hesseConfig['batchMemory'], slurm_max_runtime=hesseConfig['batchMaxRuntime'], htcondor_partition=hesseConfig['batchPartition'], htcondor_memory=hesseConfig['batchMemory'], htcondor_max_runtime=hesseConfig['batchMaxRuntime'])
         if self.asimov_fits:
-            tasks["CreateAsimovFit"] = CreateAsimovFit.req(self, years=self.year, output_dir=output_dir, workflow=self.batch_system)
+            tasks["CreateAsimovFit"] = CreateAsimovFitWrapper.req(self, years=self.year, output_dir=output_dir)
         if self.asimov_impacts:
             tasks["AsimovImpactThirdStep"] = AsimovImpactThirdStep.req(self, output_dir=output_dir, workflow=self.batch_system)
         if self.asimov_covcorr:

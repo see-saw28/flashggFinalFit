@@ -164,6 +164,11 @@ combine_fit:
   cminApproxPreFitTolerance: 0.01
   rMin: 0.7
   rMax: 1.6
+  xMin: 124
+  xMax: 126
+  group: 
+   - 'Syst,Stat'
+   - 'ScaleZmmg,ScaleZee,Smearing,Other,Stat'
   execution: 'local'
   batchPartition: "short" # Slurm partition to use for job submission
   batchMemory: 4000 # Slurm memory to use for job submission

@@ -204,7 +204,7 @@ if opt.saveDataFrame:
 print(" ..........................................................................................")
 fdataName = "%s/%s.txt"%(opt.outputDir,opt.output)
 print(" --> Writing to datacard file: %s"%fdataName)
-from datacardTools.writeToDatacard import writePreamble, writeProcesses, writeSystematic, writeMCStatUncertainty, writePdfIndex, writeBreak
+from datacardTools.writeToDatacard import writePreamble, writeProcesses, writeSystematic, writeMCStatUncertainty, writePdfIndex, writeBreak, writeNuisanceGroups
 fdata = open(fdataName,"w")
 if not writePreamble(fdata,opt): 
   print(" --> [ERROR] in writing preamble. Leaving...")
@@ -242,6 +242,9 @@ if opt.doMCStatUncertainty:
 writeBreak(fdata)
 if not writePdfIndex(fdata,data,opt):
   print(" --> [ERROR] in writing pdf indices. Leaving...")
+  leave()
+if not writeNuisanceGroups(fdata, experimental_systematics + theory_systematics + signal_shape_systematics, opt):
+  print(" --> [ERROR] in writing nuisance groups. Leaving...")
   leave()
 fdata.close()
 

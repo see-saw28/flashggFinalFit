@@ -2,6 +2,7 @@
 import os, sys, re
 from commonTools import *
 from commonObjects import *
+from collections import OrderedDict
 
 def isZmmgScale2022Or2023Label(year):
   year = str(year).strip()
@@ -81,37 +82,13 @@ def writeProcesses(f,d,options):
 def writeSystematic(f,d,s,options,stxsMergeScheme=None,scaleCorrScheme=None):
 
   # For signal shape systematics add simple line
-  if s['type'] == 'signal_shape':
-    stitle = s['title']
-    if s['mode'] != 'other':
-      if outputNuisanceExtMap[s['mode']] != '':
-        stitle += "_%s"%outputNuisanceExtMap[s['mode']]
-    # Hard-coded split for Zmmg scale nuisances:
-    # correlate 2022 and 2023 with each other, but keep 2024 separate.
-    # Match both the old bare titles and the new CMS_HIG26007-prefixed titles.
-    zmmgScaleNames = ['ScaleEBZmmg', 'ScaleEEZmmg']
-    if s.get('name') in zmmgScaleNames or any(s['title'].endswith(name) for name in zmmgScaleNames):
-      years = options.years.split(",")
-      if any(isZmmgScale2022Or2023Label(year) for year in years):
-        lsyst = "%-70s  param    %-6s %-6s"%(f"{stitle}_2022_2023",s['mean'],s['sigma'])
-        f.write("%s\n"%lsyst)
-      for year in years:
-        year = str(year).strip()
-        if isZmmgScale2022Or2023Label(year):
-            continue
-        lsyst = "%-70s  param    %-6s %-6s" % (f"{stitle}_{year}",s["mean"],s["sigma"])
-        f.write("%s\n" % lsyst)
-      return True
-    # If not correlated: separate nuisance per year
-    if s['mode'] in ['scales','smears']:
-      for year in options.years.split(","):
-        stitle_y = "%s_%s"%(stitle,year) 
-        lsyst = "%-70s  param    %-6s %-6s"%(stitle_y,s['mean'],s['sigma'])
-        f.write("%s\n"%lsyst)
-    else:
-      lsyst = "%-70s  param    %-6s %-6s"%(stitle,s['mean'],s['sigma'])
-      f.write("%s\n"%lsyst)
+  if s["type"] == "signal_shape":
+    for nuisance_name in getSignalShapeNuisanceNames(s, options):
+      lsyst = "%-70s  param    %-6s %-6s" % (nuisance_name, s["mean"], s["sigma"])
+      f.write("%s\n" % lsyst)
+
     return True
+
  
   # Else: for yield variation uncertainties...
   # Remove all rows from dataFrame with prune=1 (includes NoTag)
@@ -303,3 +280,63 @@ def writePdfIndex(f,d,options):
 def writeBreak(f):
   lbreak = '----------------------------------------------------------------------------------------------------------------------------------'
   f.write("%s\n"%lbreak)
+
+
+def getSignalShapeNuisanceNames(s, options):
+  stitle = s["title"]
+
+  if s["mode"] != "other":
+    if outputNuisanceExtMap[s["mode"]] != "":
+      stitle += "_%s" % outputNuisanceExtMap[s["mode"]]
+
+  years = [str(y).strip() for y in options.years.split(",") if str(y).strip()]
+
+  zmmgScaleNames = ["ScaleEBZmmg", "ScaleEEZmmg"]
+  isZmmgScale = s.get("name") in zmmgScaleNames or any(s["title"].endswith(name) for name in zmmgScaleNames)
+
+  if isZmmgScale:
+    names = []
+
+    if any(isZmmgScale2022Or2023Label(year) for year in years):
+      names.append(f"{stitle}_2022_2023")
+
+    for year in years:
+      if isZmmgScale2022Or2023Label(year):
+        continue
+      names.append(f"{stitle}_{year}")
+
+    return names
+
+  if s["mode"] in ["scales", "smears"]:
+    return [f"{stitle}_{year}" for year in years]
+
+  return [stitle]
+
+def writeNuisanceGroups(f, systematics, options):
+  groups = OrderedDict()
+
+  for syst in systematics:
+    group = syst.get("group", "Other")
+
+    if group in ["", None]:
+      group = "Other"
+
+    if syst["type"] == "signal_shape":
+      nuisance_names = getSignalShapeNuisanceNames(syst, options)
+    else:
+      nuisance_names = [syst["title"]]
+
+    if group not in groups:
+      groups[group] = []
+
+    groups[group].extend(nuisance_names)
+
+  f.write("\n")
+  for group, nuisance_names in groups.items():
+    nuisance_names = sorted(set(nuisance_names))
+    if len(nuisance_names) == 0:
+      continue
+
+    f.write("%-30s group = %s\n" % (group, " ".join(nuisance_names)))
+
+  return True
