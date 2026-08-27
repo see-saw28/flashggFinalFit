@@ -1478,7 +1478,7 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
                 "--others", 
             ]
 
-            arguments += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')+f":freeze {'+'.join(freeze.split('_'))}:{i+2}" for i, (freeze, name) in enumerate(zip(freeze_list[1:], self.group.split(',')[1:]))]
+            arguments += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')+f":{'Stat only' if freeze=='allConstrainedNuisances' else 'freeze '+'+'.join(freeze.split('_'))}:{i+2}" for i, (freeze, name) in enumerate(zip(freeze_list[1:], self.group.split(',')[1:]))]
 
             if self.batch_flavor == "slurm/psi":
                 arguments = [

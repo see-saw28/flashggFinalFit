@@ -166,7 +166,9 @@ experimental_systematics = [
                 # The scheme should be only used if you are doing 22+23 or 22+23+24. For other combinations, see the link above
                 # If you use 22+23, you can comment out lumi_3 (otherwise you will have empty dashes in the datacard, which is also not a big problem)
                 # Note: If you want to have a result for multiple years with combinedCards, you should prepare the individual datacards with the following lines
-                {'name':'lumi_1','title':'lumi_13p6TeV_222324','type':'constant','prior':'lnN','correlateAcrossYears':1,'value':{"2022preEE": "1.0138", "2022postEE": "1.0138", "2022": "1.0138", "2023preBPix": "1.0017", "2023postBPix": "1.0017", "2023": "1.0017", "2024": "1.0020"}},
+                # {'name':'lumi_1','title':'lumi_13p6TeV_222324','type':'constant','prior':'lnN','correlateAcrossYears':1,'value':{"2022preEE": "1.0138", "2022postEE": "1.0138", "2022": "1.0138", "2023preBPix": "1.0017", "2023postBPix": "1.0017", "2023": "1.0017", "2024": "1.0020"}},
+                {'name':'lumi_1','title':'lumi_13p6TeV_22232425','type':'constant','prior':'lnN','correlateAcrossYears':1,'value':{"2022preEE": "1.0138", "2022postEE": "1.0138", "2022": "1.0138", "2023preBPix": "1.0017", "2023postBPix": "1.0017", "2023": "1.0017", "2024": "1.0020", "2025": "1.0020"}},
+                # {'name':'lumi_1','title':'lumi_13p6TeV_Run3','type':'constant','prior':'lnN','correlateAcrossYears':1,'value':{"2022preEE": "1.0138", "2022postEE": "1.0138", "2022": "1.0138", "2023preBPix": "1.0017", "2023postBPix": "1.0017", "2023": "1.0017", "2024": "1.0020", "2025": "1.0020", "2026": "1.0020"}},
                 # {'name':'lumi_2','title':'lumi_13p6TeV_2324','type':'constant','prior':'lnN','correlateAcrossYears':1,'value':{"2023preBPix": "1.0127", "2023postBPix": "1.0127", "2023": "1.0127", "2024": "1.0068"}},
                 # {'name':'lumi_3','title':'lumi_13p6TeV_2024','type':'constant','prior':'lnN','correlateAcrossYears':1,'value':{"2024": "1.0144"}},
                 ### Other experimental nuisances
