@@ -90,7 +90,6 @@ class Trees2WSSingleProcess(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWork
             ]
             branch_map = {i: mode_proc_mass for i, mode_proc_mass in enumerate(mode_proc_mass_list)}
 
-        print(branch_map)
         if not branch_map:
             print("branch_map is empty, trying process_year directories with M<mass> file names.")
             mode_proc_mass_list = [

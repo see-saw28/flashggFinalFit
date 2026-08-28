@@ -60,7 +60,7 @@ class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
         
         output_dir = self.get_output_dir()
             
-        tasks["Trees2WS"] = Trees2WS.req(self, output_dir=output_dir)
+        tasks["Trees2WS"] = Trees2WS.req(self, output_dir=output_dir, years=self.year)
         
         return tasks
     
@@ -160,11 +160,6 @@ class FTestCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow): #
             shutil.rmtree(os.environ["TARGET_PATH"])
 
 class FTest(MultiYearTask):
-    variable = law.Parameter(default="", description="Variable to be used")
-    output_dir = law.Parameter(default="", description="Path to the output directory")
-    year = law.Parameter(default='2022', description="Year")
-    
-    batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
     
     def _requires_single(self):
         # req() is defined on all tasks and handles the passing of all parameter values that are
@@ -253,19 +248,15 @@ class FTest(MultiYearTask):
     
 class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWorkflow):#(Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
     input_path = law.Parameter(description="Path to the input ROOT files (/ws_signal)")
-    output_dir = law.Parameter(description="Path to the output directory")
     ext = law.Parameter(default="earlyAnalysis", description="Extension to be used for output folder naming")
     cats = law.Parameter(description="Category string")
     procs = law.Parameter(description="Processes")
     scales = law.Parameter(description="Scales")
     scalesCorr = law.Parameter(default="", description="Scale corrections")
     scalesGlobal = law.Parameter(default="", description="Global scales")
-    smears = law.Parameter(description="Smearings")
-    variable = law.Parameter(default="", description="Variable to be used")
-    year = law.Parameter(description="Year")    
+    smears = law.Parameter(description="Smearings")   
     era = law.Parameter(description="era")    
     
-    batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
     
     htcondor_job_kwargs_submit = {"spool": True}
 
@@ -283,7 +274,7 @@ class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
         
         output_dir = self.get_output_dir()
             
-        tasks["Trees2WS"] = Trees2WS.req(self, output_dir=output_dir)
+        tasks["Trees2WS"] = Trees2WS.req(self, output_dir=output_dir, years=self.year)
         
         return tasks
     
@@ -388,11 +379,6 @@ class CalcPhotonSystCategory(Task, HTCondorWorkflow, SlurmWorkflow, law.LocalWor
             shutil.rmtree(os.environ["TARGET_PATH"])
 
 class CalcPhotonSyst(MultiYearTask):
-    variable = law.Parameter(default="", description="Variable to be used")
-    output_dir = law.Parameter(default="", description="Path to the output directory")
-    year = law.Parameter(default='2022', description="Year")
-
-    batch_flavor = law.Parameter(default="htcondor", description="Batch system to use")
 
     def _requires_single(self):
         # req() is defined on all tasks and handles the passing of all parameter values that are
@@ -457,7 +443,6 @@ class CalcPhotonSyst(MultiYearTask):
                 scalesGlobal=currentConfig['scalesGlobal'], 
                 smears=currentConfig['smears'], 
                 era=currentEra,
-                # version=f"v{i}", 
                 workflow=currentConfig['execution'], 
                 slurm_partition=currentConfig['batchPartition'], 
                 slurm_memory=currentConfig['batchMemory'], 

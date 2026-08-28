@@ -675,8 +675,8 @@ class RunText2Workspace(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, l
             "--outputDir", datacards_dir,
             "--outputName", workspace_name,
             "--mode", mode,
-            "--common_opts", f"-m {HIGGS_MASS} higgsMassRange=122,128",
-            "--batch", "local"
+            "--common_opts", f"-m {HIGGS_MASS} higgsMassRange=122,128 --channel-masks",
+            "--batch", "local",
         ]
         if self.variable != '':
             arguments.append("--ext")
@@ -942,31 +942,9 @@ class CreateAsimovFitFirstStep(Task): #(law.Task): #(Task, HTCondorWorkflow, law
         return branch_map
 
     def output(self):
-        
-        output_dir = self.get_output_dir()
-
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
-            
-        output = []
-
-        outdir = f'outdir_{self.year}_{self.variable}' if self.variable != '' else '' 
-            
-        output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov')]
-                
-        outputFileTargets = []
-        
-        for _, current_output_path in enumerate(output):
-            outputFileTargets.append(law.LocalFileTarget(current_output_path))
-            
-        # print(outputFileTargets)
-
-        return outputFileTargets
+        return self.input()
 
     def run(self):
-        
         return True
 
 # Handles both standard per-category scans and the merged-category flow by
@@ -1108,7 +1086,8 @@ class AsimovFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             print(pdfIdx)
             return pdfIdx
 
-        pdfIdx = check_pdf_idx(current_cat)
+        if self.variable != 'MH':
+            pdfIdx = check_pdf_idx(current_cat)
 
         firstStepPath = os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', f"higgsCombinefirstStep_{current_cat}.MultiDimFit.mH{HIGGS_MASS}.root")
 
@@ -1986,7 +1965,8 @@ class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWor
         pdfIdx = None
         first_step_path = os.path.join(first_output, f"higgsCombinefirstStep_{pdf_idx_param}.MultiDimFit.mH{HIGGS_MASS}.root")
         if os.path.exists(first_step_path):
-            pdfIdx = check_pdf_idx(pdf_idx_param)
+            if self.variable != 'MH':
+                pdfIdx = check_pdf_idx(pdf_idx_param)
         else:
             print(f"First-step file not found for PDF index extraction: {first_step_path}")
 
@@ -2019,8 +1999,8 @@ class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWor
 
         elif self.variable in ["MH"]:
             set_param_string = f"MH={HIGGS_MASS}"
-            if pdfIdx:
-                set_param_string = f"{set_param_string},{pdfIdx}"
+            # if pdfIdx:
+            #     set_param_string = f"{set_param_string},{pdfIdx}"
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
