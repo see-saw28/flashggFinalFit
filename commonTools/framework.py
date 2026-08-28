@@ -17,6 +17,8 @@ import luigi
 import yaml
 import law
 
+from commonTools import extractListOfCatsFromHiggsDNAAllData
+
 
 # the htcondor workflow implementation is part of a law contrib package
 # so we need to explicitly load it
@@ -68,6 +70,11 @@ class Task(law.Task):
             return configYamlPath, config
         
         return config
+
+    def get_cats(self):
+        config = self.get_input_config()
+        data_input_path = config['inputFiles']['Trees2WSData'] 
+        return extractListOfCatsFromHiggsDNAAllData(data_input_path)
 
     def store_parts(self):
         return (self.__class__.__name__, self.version)

@@ -981,7 +981,7 @@ class AsimovFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
         # Differential fits with cat-merging provide a csv list of categories,
         # here we build the cartesian product (cat, scan point) so every branch
         # can be processed inside the same Condor submission.
-        cat_list = [cat.strip() for cat in self.cats.split(",") if cat.strip()]
+        cat_list = [self.cats]
         branch_map = {}
         idx = 0
         for cat in cat_list:
@@ -1003,6 +1003,7 @@ class AsimovFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
 
     def output(self):
         current_cat, current_point = self._current_branch_info()
+        current_dir = "_".join(current_cat.split(",")) if current_cat != self.cat else ""
         
         output_dir = self.get_output_dir()
 
@@ -1015,9 +1016,9 @@ class AsimovFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             
         output = [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov')]
 
-        output = [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', self.freeze)]
+        output = [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir, self.freeze)]
         
-        output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', self.freeze, f'higgsCombineAsimovPostFitScanFit_{current_cat}.POINTS.{current_point}.{current_point}.MultiDimFit.mH{HIGGS_MASS}.root')]
+        output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir, self.freeze, f'higgsCombineAsimovPostFitScanFit_{self.cat}.POINTS.{current_point}.{current_point}.MultiDimFit.mH{HIGGS_MASS}.root')]
         
         outputFileTargets = []
                 
@@ -1025,9 +1026,34 @@ class AsimovFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             outputFileTargets.append(law.LocalFileTarget(current_output_path))
             
         return outputFileTargets
+    
+    def make_channel_mask_params(self, cats):
+        years = yearMap[self.year]
+
+        cats_analysis = self.get_cats()
+        cats_analysis = [cat.strip() for cat in cats_analysis.split(",") if cat.strip()]
+
+        # Single-year case: channels are CAT0, CAT1, ...
+        if len(years) == 1:
+            return ",".join(
+                f"mask_{ch}={0 if ch in cats.split(',') else 1}"
+                for ch in cats_analysis
+            )
+
+        # Multi-year case: channels are Y22_CAT0, Y23_CAT0, ...
+        mask_params = []
+        for year in years:
+            ytag = f"Y{year[-2:]}"
+            for cat in cats_analysis:
+                channel = f"{ytag}_{cat}"
+                keep = cat in cats.split(',')
+                mask_params.append(f"mask_{channel}={0 if keep else 1}")
+
+        return ",".join(mask_params)
 
     def run(self):
         current_cat, current_point = self._current_branch_info()
+        current_dir = "_".join(current_cat.split(",")) if current_cat != self.cat else ""
         
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -1057,8 +1083,8 @@ class AsimovFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             os.chdir(os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'asimov'))
         else:
             execute_command([f'mkdir -p {output_dir}/Combine/{outdir}/{fitFolderName}/asimov'], shell=True)
-            execute_command([f'mkdir -p {output_dir}/Combine/{outdir}/{fitFolderName}/asimov/{self.freeze}'], shell=True)
-            os.chdir(os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', self.freeze))
+            execute_command([f'mkdir -p {output_dir}/Combine/{outdir}/{fitFolderName}/asimov/{current_dir}/{self.freeze}'], shell=True)
+            os.chdir(os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir, self.freeze))
 
         first_output = os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', self.freeze)
 
@@ -1089,7 +1115,7 @@ class AsimovFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
         if self.variable != 'MH':
             pdfIdx = check_pdf_idx(current_cat)
 
-        firstStepPath = os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', f"higgsCombinefirstStep_{current_cat}.MultiDimFit.mH{HIGGS_MASS}.root")
+        firstStepPath = os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', f"higgsCombinefirstStep_{self.cat}.MultiDimFit.mH{HIGGS_MASS}.root")
 
         if self.variable in ['', 'tuto']:
             arguments = [
@@ -1131,7 +1157,6 @@ class AsimovFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
                 "combineTool.py",
                 "-M", "MultiDimFit",
                 "-d", firstStepPath,
-                "--setParameters", "r=1.0",
                 "-m", f"{HIGGS_MASS}",
                 "-n", f"AsimovPostFitScanFit_{self.cat}.POINTS.{current_point}.{current_point}",
                 "--cminDefaultMinimizerStrategy=0",
@@ -1152,13 +1177,30 @@ class AsimovFitCategorySyst(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
                 "--snapshotName", "MultiDimFit",
                 "--setParameterRanges", f"{config['combine_fit']['setParameterRange']}",
             ]   
+
+            freezeParameters = "r"
+            # freeze all syst
             if self.freeze == "allConstrainedNuisances":
-                arguments.extend(["--freezeParameters", "r,allConstrainedNuisances"])
+                freezeParameters = f"{freezeParameters},allConstrainedNuisances"
+            # freeze nuisance group defined in the datacard.txt
             elif self.freeze != "":
-                arguments.extend(["--freezeParameters", "r"])
                 arguments.extend(["--freezeNuisanceGroups", ",".join(self.freeze.split("_"))])
-            else:
-                arguments.extend(["--freezeParameters", "r"])
+
+            arguments.extend(["--freezeParameters", freezeParameters])
+
+            setParameters = "r=1.0"
+            # mask channels/cats
+            if self.cats != "":
+                mask = self.make_channel_mask_params(self.cats)
+                setParameters = f"{setParameters},{mask}"
+            arguments.extend(["--setParameters", setParameters])
+
+
+                
+
+            if current_dir != current_cat:
+                pass
+
         else:
             pdf_indices = combineVariableDict(self.variable, self.year)['pdfIndeces']
             cache_key = (datacard_path,)
@@ -1246,6 +1288,7 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
 
     group = law.Parameter(default="Syst,Stat")
     set_pdfidx_inclusives = law.Parameter(default=False)
+    cats = law.Parameter(default="")
 
     def workflow_requires(self):
         workflow_reqs = super().workflow_requires()
@@ -1273,8 +1316,6 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
         }
 
         cat = "MH" if self.variable == "MH" else "r"
-
-
 
         for i, syst in enumerate(self.group.split(',')):
             if i == len(self.group.split(','))-1:
@@ -1307,6 +1348,7 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
     def output(self):
         config = self.get_input_config()
         output_dir = self.get_output_dir()
+        current_dir = "_".join(self.cats.split(","))
 
         if self.variable == '':
             fitFolderName = f'runFits_mu_fiducial'
@@ -1317,7 +1359,7 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
 
         outdir = f'outdir_{self.year}_{self.variable}' if self.variable != '' else '' 
             
-        output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans')]
+        output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir)]
 
         group = self.group
         for i,syst in enumerate(group.split(',')):
@@ -1332,10 +1374,10 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
 
             for c in cat:
                 if i == 0:
-                    output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', f'scan_{c}_{"_".join(group.split(","))}.root')]
-                    output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', f'scan_{c}_{"_".join(group.split(","))}.pdf')]
-                    output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', f'scan_{c}_{"_".join(group.split(","))}.png')]
-                output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', freeze,  f'higgsCombineAsimovPostFitScanFit_{c}.root')]
+                    output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir, f'scan_{c}_{"_".join(group.split(","))}.root')]
+                    output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir, f'scan_{c}_{"_".join(group.split(","))}.pdf')]
+                    output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir, f'scan_{c}_{"_".join(group.split(","))}.png')]
+                output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{c}.root')]
         
 
         outputFileTargets = []
@@ -1358,6 +1400,7 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
                     
         config = self.get_input_config()
         output_dir = self.get_output_dir() 
+        current_dir = "_".join(self.cats.split(","))
             
         cwd = os.getcwd()
         
@@ -1372,8 +1415,8 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
             execute_command([f'mkdir -p $TARGET_PATH/Combine/{fitFolderName}/asimov/scans'], shell=True)
             os.chdir(os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'asimov'))
         else:
-            execute_command([f'mkdir -p {output_dir}/Combine/{outdir}/{fitFolderName}/asimov/scans'], shell=True)
-            os.chdir(os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov'))
+            execute_command([f'mkdir -p {output_dir}/Combine/{outdir}/{fitFolderName}/asimov/scans/{current_dir}'], shell=True)
+            os.chdir(os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir))
         
         if self.variable in ['', 'tuto', 'MH']:
             cats = ["MH"] if self.variable == "MH" else ["r"]
@@ -1411,18 +1454,18 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
         
                 arguments = [
                     "hadd", "-f",
-                    f"{os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov',freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')}"
+                    f"{os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')}"
                 ]
                 for i in range(config["combine_fit"]["asimov_numPoints"]):
-                    arguments.append(os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.POINTS.{i}.{i}.MultiDimFit.mH{HIGGS_MASS}.root'))
+                    arguments.append(os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.POINTS.{i}.{i}.MultiDimFit.mH{HIGGS_MASS}.root'))
 
                 if self.batch_flavor == "slurm/psi":
                     arguments = [
                         "hadd", "-f",
-                        f"{os.path.join(os.environ['TARGET_PATH'], 'Combine', fitFolderName, 'asimov', freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')}"
+                        f"{os.path.join(os.environ['TARGET_PATH'], 'Combine', fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')}"
                     ]
                     for i in range(config["combine_fit"]["asimov_numPoints"]):
-                        arguments.append(os.path.join(os.environ['TARGET_PATH'], 'Combine', fitFolderName, 'asimov', freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.POINTS.{i}.{i}.MultiDimFit.mH{HIGGS_MASS}.root'))
+                        arguments.append(os.path.join(os.environ['TARGET_PATH'], 'Combine', fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.POINTS.{i}.{i}.MultiDimFit.mH{HIGGS_MASS}.root'))
                 command = arguments
                 # print(command)
                 try:
@@ -1437,16 +1480,16 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
 
             # change to the scans directory
             if self.batch_flavor == "slurm/psi":
-                os.chdir(os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'asimov', 'scans'))
+                os.chdir(os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'asimov', 'scans', current_dir))
             else:
-                os.chdir(os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans'))
+                os.chdir(os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir))
 
             arguments = [
                 "python3", 
                 # f"{os.environ['CMSSW_BASE']}/bin/{os.environ['SCRAM_ARCH']}/plot1DScan.py",
                 os.path.join(os.environ["ANALYSIS_PATH"],"Plots/plot1DScan.py"),
                 # "plot1DScan.py",
-                os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', freeze_list[0], f'higgsCombineAsimovPostFitScanFit_{cat}.root'),
+                os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir, freeze_list[0], f'higgsCombineAsimovPostFitScanFit_{cat}.root'),
                 "-o", f'scan_{cat}_{"_".join(self.group.split(","))}',
                 "--POI", f"{cat}",
                 "--main-label", "Expected",
@@ -1457,19 +1500,8 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
                 "--others", 
             ]
 
-            arguments += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')+f":{'Stat only' if freeze=='allConstrainedNuisances' else 'freeze '+'+'.join(freeze.split('_'))}:{i+2}" for i, (freeze, name) in enumerate(zip(freeze_list[1:], self.group.split(',')[1:]))]
+            arguments += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')+f":{'Stat only' if freeze=='allConstrainedNuisances' else 'freeze '+'+'.join(freeze.split('_'))}:{i+2}" for i, (freeze, name) in enumerate(zip(freeze_list[1:], self.group.split(',')[1:]))]
 
-            if self.batch_flavor == "slurm/psi":
-                arguments = [
-                    "python3", f"{os.environ['CMSSW_BASE']}/bin/{os.environ['SCRAM_ARCH']}/plot1DScan.py",
-                    # "plot1DScan.py",
-                    os.path.join(os.environ['TARGET_PATH'], 'Combine', fitFolderName, 'asimov', f'higgsCombineAsimovPostFitScanFit_{cat}.root'),
-                    "-o", f'scan_{cat}_{"_".join(self.group.split(","))}',
-                    "--POI", f"{cat}",
-                    "--others", os.path.join(os.environ['TARGET_PATH'], 'Combine', fitFolderName, 'asimov', f'higgsCombineAsimovPostFitScanFit_{cat}.root')+":Stat only:2",
-                    "--main-label", "Expected",
-                    "--translate", os.path.join(os.environ["ANALYSIS_PATH"], 'Combine', 'pois.json')
-                ]
             command = arguments
             print(' '.join(command))
             try:
@@ -1517,17 +1549,24 @@ class CreateAsimovFitWrapper(MultiYearTask):
 
         tasks = {}
 
-        for group in groups:
-            label = group.replace(",", "_")
+        for cats in ([""] + self.get_cats().split(",")):
+            # do Syst,Stat and syst groups splitting Zmmg,Zee,Smearing,Other,Stat
+            for group in groups:
+                label = group.replace(",", "_")
+                tasks[f"CreateAsimovFit_{label}_{cats}"] = CreateAsimovFit.req(
+                    self,
+                    years=self.years,
+                    output_dir=output_dir,
+                    group=group,
+                    set_pdfidx_inclusives=self.set_pdfidx_inclusives,
+                    workflow=self.batch_flavor,
+                    cats=cats
+                )
 
-            tasks[f"CreateAsimovFit_{label}"] = CreateAsimovFit.req(
-                self,
-                years=self.years,
-                output_dir=output_dir,
-                group=group,
-                set_pdfidx_inclusives=self.set_pdfidx_inclusives,
-                workflow=self.batch_flavor,
-            )
+                if cats != "":
+                    break
+
+
 
         return tasks
 
