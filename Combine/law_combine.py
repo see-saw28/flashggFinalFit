@@ -1729,11 +1729,19 @@ class CreateAsimovFitPerCat(MultiYearTask):
     is_per_year = luigi.BoolParameter(default=False, description="Show per year breakdown in the summary plot")
     set_pdfidx_inclusives = law.Parameter(default=False)
 
+    def _per_year_rows(self):
+        if self.year not in yearMap:
+            raise ValueError(
+                f"No per-year expansion is configured for '{self.year}'. "
+                f"Available entries: {sorted(yearMap)}"
+            )
+        # Keep the combined result last and avoid duplicating single-year entries.
+        return [year for year in yearMap[self.year] if year != self.year] + [self.year]
+
     def _requires_single(self):
         if self.is_per_year:
-            years = yearMap[self.year]
             tasks = {}
-            for year in years + [self.year]:
+            for year in self._per_year_rows():
                 tasks[year] = CreateAsimovFitWrapper.req(
                     self,
                     years=year,
@@ -1774,10 +1782,11 @@ class CreateAsimovFitPerCat(MultiYearTask):
 
     def _output_base(self):
         suffix = "stat_syst" if self.include_stat_error else "total"
-        return os.path.join(self._summary_dir(), f"scan_MH_perCat_{suffix}")
+        breakdown = "perYear" if self.is_per_year else "perCat"
+        return os.path.join(self._summary_dir(), f"scan_MH_{breakdown}_{suffix}")
 
     def output(self):
-        output = [self._summary_dir()]
+        output = []
         output += [self._output_base() + ext for ext in [".root", ".pdf", ".png"]]
         return [law.LocalFileTarget(path) for path in output]
 
@@ -1799,6 +1808,32 @@ class CreateAsimovFitPerCat(MultiYearTask):
             return targets
         return value
 
+    def _inclusive_scan_argument(self, wrapper_input, group_label, label):
+        """Build a plotter scan argument from one wrapper's inclusive fit."""
+        try:
+            inclusive_input = self._unwrap_workflow_input(
+                wrapper_input["inclusive"][group_label]
+            )
+            total_scan = inclusive_input["scans"]["total"]["MH"].path
+        except KeyError as exc:
+            raise RuntimeError(
+                f"Could not find inclusive total MH scan for '{label}' and "
+                f"group '{group_label}'. Available input structure: {wrapper_input}"
+            ) from exc
+
+        scan_argument = f"{label}:{total_scan}"
+        if self.include_stat_error:
+            try:
+                stat_scan = inclusive_input["scans"]["stat"]["MH"].path
+            except KeyError as exc:
+                raise RuntimeError(
+                    f"Could not find inclusive stat-only MH scan for '{label}'. "
+                    f"Available input structure: {inclusive_input}"
+                ) from exc
+            scan_argument += f":{stat_scan}"
+
+        return scan_argument
+
     def run(self):
         if self.variable != "MH":
             raise RuntimeError(
@@ -1818,6 +1853,17 @@ class CreateAsimovFitPerCat(MultiYearTask):
             # Inputs from CreateAsimovFitWrapper
             inputs = self.input()
 
+            # In category mode, _requires_single() namespaces the wrapper under
+            # the current year.  The plotting code below consumes the wrapper
+            # output itself (the dict containing "inclusive" and "categories").
+            if not self.is_per_year:
+                if self.year not in inputs:
+                    raise RuntimeError(
+                        f"Year '{self.year}' not found in self.input(). Available "
+                        f"keys: {list(inputs.keys())}"
+                    )
+                inputs = inputs[self.year]
+
             cats = self._scan_categories()
             config = self.get_input_config()
 
@@ -1833,6 +1879,15 @@ class CreateAsimovFitPerCat(MultiYearTask):
             # The per-category tasks use the first configured group
             main_group_label = groups[0].replace(",", "_")
 
+            if self.is_per_year:
+                plot_rows = self._per_year_rows()
+                split_after = len(plot_rows) - 1
+                band_from = len(plot_rows)
+            else:
+                plot_rows = cats + [self.year]
+                split_after = len(cats)
+                band_from = len(cats) + 1
+
             arguments = [
                 "python3",
                 os.path.join(
@@ -1845,9 +1900,9 @@ class CreateAsimovFitPerCat(MultiYearTask):
                 "--output",
                 self._output_base(),
                 "--band-from",
-                str(len(cats) + 1),
+                str(band_from),
                 "--split-after",
-                str(len(cats)),
+                str(split_after),
                 "--x-title",
                 "m_{H} (GeV)",
                 "--x-min",
@@ -1876,78 +1931,73 @@ class CreateAsimovFitPerCat(MultiYearTask):
             if self.include_stat_error:
                 arguments.append("--show-breakdown")
 
-            # ------------------------------------------------------------
-            # Per-category scans
-            # ------------------------------------------------------------
-            for cat in cats:
-                if cat not in inputs["categories"]:
-                    raise RuntimeError(
-                        f"Category '{cat}' not found in self.input()['categories']. "
-                        f"Available categories: "
-                        f"{list(inputs['categories'].keys())}"
-                    )
-
-                cat_input = self._unwrap_workflow_input(inputs["categories"][cat])
-
-                try:
-                    # print(cat_input)
-                    total_scan = (
-                        cat_input["scans"]["total"]["MH"].path
-                    )
-                except KeyError as exc:
-                    raise RuntimeError(
-                        f"Could not find total MH scan for category '{cat}'. "
-                        f"Available input structure: {cat_input}"
-                    ) from exc
-
-                scan_argument = (
-                    f"{self._label_for_cat(cat)}:"
-                    f"{total_scan}"
-                )
-
-                if self.include_stat_error:
-                    try:
-                        stat_scan = (
-                            cat_input["scans"]["stat"]["MH"].path
+            if self.is_per_year:
+                # Each entry is the output of one inclusive-only wrapper.  Put the
+                # combined fit last so it also defines the uncertainty band.
+                for year in plot_rows:
+                    if year not in inputs:
+                        raise RuntimeError(
+                            f"Year '{year}' not found in self.input(). Available "
+                            f"years: {list(inputs.keys())}"
                         )
+                    label = (
+                        f"CMS H#gamma#gamma {year}"
+                        if year != self.year
+                        else f"CMS H#gamma#gamma {self.year} combined"
+                    )
+                    arguments += [
+                        "--scan",
+                        self._inclusive_scan_argument(
+                            inputs[year], main_group_label, label
+                        ),
+                    ]
+            else:
+                # --------------------------------------------------------
+                # Per-category scans
+                # --------------------------------------------------------
+                for cat in cats:
+                    if cat not in inputs["categories"]:
+                        raise RuntimeError(
+                            f"Category '{cat}' not found in self.input()['categories']. "
+                            f"Available categories: {list(inputs['categories'].keys())}"
+                        )
+
+                    cat_input = self._unwrap_workflow_input(inputs["categories"][cat])
+
+                    try:
+                        total_scan = cat_input["scans"]["total"]["MH"].path
                     except KeyError as exc:
                         raise RuntimeError(
-                            f"Could not find stat-only MH scan for category '{cat}'. "
+                            f"Could not find total MH scan for category '{cat}'. "
                             f"Available input structure: {cat_input}"
                         ) from exc
 
-                    scan_argument += f":{stat_scan}"
+                    scan_argument = f"{self._label_for_cat(cat)}:{total_scan}"
 
-                arguments += [
-                    "--scan",
-                    scan_argument,
-                ]
+                    if self.include_stat_error:
+                        try:
+                            stat_scan = cat_input["scans"]["stat"]["MH"].path
+                        except KeyError as exc:
+                            raise RuntimeError(
+                                f"Could not find stat-only MH scan for category '{cat}'. "
+                                f"Available input structure: {cat_input}"
+                            ) from exc
+                        scan_argument += f":{stat_scan}"
+
+                    arguments += ["--scan", scan_argument]
 
             # ------------------------------------------------------------
             # Inclusive scan
             # ------------------------------------------------------------
-            if main_group_label not in inputs["inclusive"]:
-                raise RuntimeError(
-                    f"Inclusive group '{main_group_label}' not found. "
-                    f"Available groups: {list(inputs['inclusive'].keys())}"
-                )
-
-            inclusive_input = self._unwrap_workflow_input(inputs["inclusive"][main_group_label])
-
-            try:
-                inclusive_scan = (
-                    inclusive_input["scans"]["total"]["MH"].path
-                )
-            except KeyError as exc:
-                raise RuntimeError(
-                    "Could not find inclusive total MH scan. "
-                    f"Available input structure: {inclusive_input}"
-                ) from exc
-
-            arguments += [
-                "--scan",
-                f"CMS H#gamma#gamma {self.year}:{inclusive_scan}",
-            ]
+            if not self.is_per_year:
+                arguments += [
+                    "--scan",
+                    self._inclusive_scan_argument(
+                        inputs,
+                        main_group_label,
+                        f"CMS H#gamma#gamma {self.year}",
+                    ),
+                ]
 
             # ------------------------------------------------------------
             # Run plotting script

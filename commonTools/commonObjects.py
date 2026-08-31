@@ -47,23 +47,18 @@ lumiMap = {
     'combined':137.65, 
     'merged':137.65,
     '2022preEE': 7.99,
-    '2223preEE': 7.99,
     '2022postEE': 26.68,
-    '2223postEE': 26.68,
-    '2022': 34.67,
     '2023preBPix': 17.96,
-    '2223preBPix': 17.96,
     '2023postBPix': 9.68,
-    '2223postBPix': 9.68,
-    '2023': 27.64,
-    '2223': 62.31,
     '2024': 109.82,
     '2025': 110.6,
     '2026': 25.3,
-    'Run3': 172.13,
-    '2022_2023_2024': 172.13,
-    '222324': 172.13,
 }
+lumiMap['2022'] = lumiMap['2022preEE'] + lumiMap['2022postEE']
+lumiMap['2023'] = lumiMap['2023preBPix'] + lumiMap['2023postBPix']
+lumiMap['2022_2023_2024'] = lumiMap['2022'] + lumiMap['2023'] + lumiMap['2024']
+lumiMap['222324'] = lumiMap['2022'] + lumiMap['2023'] + lumiMap['2024']
+lumiMap['Run3'] = lumiMap['2022'] + lumiMap['2023'] + lumiMap['2024'] + lumiMap['2025'] #+ lumiMap['2026']
 
 yearMap = {
     '2022': ['2022'],
