@@ -1,4 +1,5 @@
 import law
+import luigi
 import os
 import re
 import subprocess
@@ -1345,49 +1346,139 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
         branch_map = {i: branch for i, branch in enumerate(branch_list)}
         return branch_map
 
+    # def output(self):
+    #     config = self.get_input_config()
+    #     output_dir = self.get_output_dir()
+    #     current_dir = "_".join(self.cats.split(","))
+
+    #     if self.variable == '':
+    #         fitFolderName = f'runFits_mu_fiducial'
+    #     else:
+    #         fitFolderName = f'runFits_{self.variable}'
+            
+    #     output = []
+
+    #     outdir = f'outdir_{self.year}_{self.variable}' if self.variable != '' else '' 
+            
+    #     output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir)]
+
+    #     group = self.group
+    #     for i,syst in enumerate(group.split(',')):
+    #         if i == len(self.group.split(','))-1:
+    #             freeze = "allConstrainedNuisances"
+    #         else:
+    #             freeze = '_'.join(self.group.split(",")[:i])
+    #         if self.variable in ['','tuto', 'MH']:
+    #             cat = ["MH"] if self.variable == "MH" else ["r"]
+    #         else:
+    #             cat = combineVariableDict(self.variable, self.year)['paramStrNoOne']
+
+    #         for c in cat:
+    #             if i == 0:
+    #                 output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir, f'scan_{c}_{"_".join(group.split(","))}.root')]
+    #                 output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir, f'scan_{c}_{"_".join(group.split(","))}.pdf')]
+    #                 output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir, f'scan_{c}_{"_".join(group.split(","))}.png')]
+    #             output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{c}.root')]
+        
+
+    #     outputFileTargets = []
+                
+    #     for _, current_output_path in enumerate(output):
+    #         outputFileTargets.append(law.LocalFileTarget(current_output_path))
+            
+    #     # print(outputFileTargets)
+
+    #     return outputFileTargets
+
     def output(self):
-        config = self.get_input_config()
         output_dir = self.get_output_dir()
         current_dir = "_".join(self.cats.split(","))
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
+        if self.variable == "":
+            fitFolderName = "runFits_mu_fiducial"
         else:
-            fitFolderName = f'runFits_{self.variable}'
-            
-        output = []
+            fitFolderName = f"runFits_{self.variable}"
 
-        outdir = f'outdir_{self.year}_{self.variable}' if self.variable != '' else '' 
-            
-        output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir)]
+        outdir = (
+            f"outdir_{self.year}_{self.variable}"
+            if self.variable != ""
+            else ""
+        )
 
-        group = self.group
-        for i,syst in enumerate(group.split(',')):
-            if i == len(self.group.split(','))-1:
+        base_dir = os.path.join(
+            output_dir,
+            "Combine",
+            outdir,
+            fitFolderName,
+            "asimov",
+        )
+
+        scan_dir = os.path.join(
+            base_dir,
+            "scans",
+            current_dir,
+        )
+
+        if self.variable in ["", "tuto", "MH"]:
+            pois = ["MH"] if self.variable == "MH" else ["r"]
+        else:
+            pois = combineVariableDict(
+                self.variable,
+                self.year,
+            )["paramStrNoOne"]
+
+        outputs = {
+            "scan_dir": law.LocalDirectoryTarget(scan_dir),
+            "scans": {},
+            "plots": {},
+        }
+
+        groups = self.group.split(",")
+
+        for i, syst in enumerate(groups):
+
+            if i == len(groups) - 1:
                 freeze = "allConstrainedNuisances"
             else:
-                freeze = '_'.join(self.group.split(",")[:i])
-            if self.variable in ['','tuto', 'MH']:
-                cat = ["MH"] if self.variable == "MH" else ["r"]
+                freeze = "_".join(groups[:i])
+
+            # Give the important scans semantic names
+            if freeze == "":
+                scan_type = "total"
+            elif freeze == "allConstrainedNuisances":
+                scan_type = "stat"
             else:
-                cat = combineVariableDict(self.variable, self.year)['paramStrNoOne']
+                scan_type = freeze
 
-            for c in cat:
-                if i == 0:
-                    output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir, f'scan_{c}_{"_".join(group.split(","))}.root')]
-                    output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir, f'scan_{c}_{"_".join(group.split(","))}.pdf')]
-                    output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', 'scans', current_dir, f'scan_{c}_{"_".join(group.split(","))}.png')]
-                output += [os.path.join(output_dir, 'Combine', outdir, fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{c}.root')]
-        
+            outputs["scans"][scan_type] = {}
 
-        outputFileTargets = []
-                
-        for _, current_output_path in enumerate(output):
-            outputFileTargets.append(law.LocalFileTarget(current_output_path))
-            
-        # print(outputFileTargets)
+            for poi in pois:
+                path = os.path.join(
+                    base_dir,
+                    current_dir,
+                    freeze,
+                    f"higgsCombineAsimovPostFitScanFit_{poi}.root",
+                )
 
-        return outputFileTargets
+                outputs["scans"][scan_type][poi] = \
+                    law.LocalFileTarget(path)
+
+        # plot outputs are produced only once
+        group_name = "_".join(groups)
+
+        for poi in pois:
+            outputs["plots"][poi] = {}
+
+            for ext in ("root", "pdf", "png"):
+                path = os.path.join(
+                    scan_dir,
+                    f"scan_{poi}_{group_name}.{ext}",
+                )
+
+                outputs["plots"][poi][ext] = \
+                    law.LocalFileTarget(path)
+
+        return outputs
 
     def run(self):
         
@@ -1538,35 +1629,90 @@ class CreateAsimovFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmW
 class CreateAsimovFitWrapper(MultiYearTask):
 
     set_pdfidx_inclusives = law.Parameter(default=False)
+    do_per_cat = luigi.BoolParameter(default=False, description="Run per-category fits instead of inclusive fits")
 
+    # def _requires_single(self):
+    #     config = self.get_input_config()
+    #     output_dir = self.get_output_dir()
+
+    #     groups = config["combine_fit"].get("group", ["Syst,Stat"])
+    #     if isinstance(groups, str):
+    #         groups = [groups]
+
+    #     tasks = {}
+
+    #     for cats in ([""] + self.get_cats().split(",")):
+    #         # do Syst,Stat and syst groups splitting Zmmg,Zee,Smearing,Other,Stat
+    #         for group in groups:
+    #             label = group.replace(",", "_")
+    #             tasks[f"CreateAsimovFit_{label}_{cats}"] = CreateAsimovFit.req(
+    #                 self,
+    #                 years=self.years,
+    #                 output_dir=output_dir,
+    #                 group=group,
+    #                 set_pdfidx_inclusives=self.set_pdfidx_inclusives,
+    #                 workflow=self.batch_flavor,
+    #                 cats=cats
+    #             )
+
+    #             if cats != "":
+    #                 break
+
+
+
+    #     return tasks
+    
     def _requires_single(self):
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        groups = config["combine_fit"].get("group", ["Syst,Stat"])
+        groups = config["combine_fit"].get(
+            "group",
+            ["Syst,Stat"],
+        )
+
         if isinstance(groups, str):
             groups = [groups]
 
-        tasks = {}
+        tasks = {
+            "inclusive": {},
+            "categories": {},
+        }
 
-        for cats in ([""] + self.get_cats().split(",")):
-            # do Syst,Stat and syst groups splitting Zmmg,Zee,Smearing,Other,Stat
-            for group in groups:
-                label = group.replace(",", "_")
-                tasks[f"CreateAsimovFit_{label}_{cats}"] = CreateAsimovFit.req(
+        # Inclusive fits: preserve all configured groups
+        for group in groups:
+            label = group.replace(",", "_")
+
+            tasks["inclusive"][label] = CreateAsimovFit.req(
+                self,
+                years=self.years,
+                output_dir=output_dir,
+                group=group,
+                set_pdfidx_inclusives=self.set_pdfidx_inclusives,
+                workflow=self.batch_flavor,
+                cats="",
+            )
+
+        if self.do_per_cat:
+            # Per-category fits only need the first group,
+            # matching your previous behavior.
+            group = groups[0]
+
+            for cat in self.get_cats().split(","):
+                cat = cat.strip()
+
+                if not cat:
+                    continue
+
+                tasks["categories"][cat] = CreateAsimovFit.req(
                     self,
                     years=self.years,
                     output_dir=output_dir,
                     group=group,
                     set_pdfidx_inclusives=self.set_pdfidx_inclusives,
                     workflow=self.batch_flavor,
-                    cats=cats
+                    cats=cat,
                 )
-
-                if cats != "":
-                    break
-
-
 
         return tasks
 
@@ -1575,6 +1721,271 @@ class CreateAsimovFitWrapper(MultiYearTask):
 
     def run(self):
         return True
+
+
+class CreateAsimovFitPerCat(MultiYearTask):
+    include_stat_error = luigi.BoolParameter(default=True, description="Include stat-only scan inputs and print stat/syst breakdown")
+    show_values = luigi.BoolParameter(default=True, description="Draw numerical fit values on each summary row")
+    is_per_year = luigi.BoolParameter(default=False, description="Show per year breakdown in the summary plot")
+    set_pdfidx_inclusives = law.Parameter(default=False)
+
+    def _requires_single(self):
+        if self.is_per_year:
+            years = yearMap[self.year]
+            tasks = {}
+            for year in years + [self.year]:
+                tasks[year] = CreateAsimovFitWrapper.req(
+                    self,
+                    years=year,
+                    output_dir=self.get_output_dir(),
+                    set_pdfidx_inclusives=self.set_pdfidx_inclusives,
+                    do_per_cat=False
+                )
+            return tasks
+        return {self.year: CreateAsimovFitWrapper.req(
+            self,
+            years=self.years,
+            output_dir=self.get_output_dir(),
+            set_pdfidx_inclusives=self.set_pdfidx_inclusives,
+            do_per_cat=True
+        )}
+
+    def _scan_categories(self):
+        return [cat.strip() for cat in self.get_cats().split(",") if cat.strip()]
+
+    def _fit_folder_name(self):
+        if self.variable == '':
+            return "runFits_mu_fiducial"
+        return f"runFits_{self.variable}"
+
+    def _outdir(self):
+        return f"outdir_{self.year}_{self.variable}" if self.variable != '' else f"outdir_{self.year}"
+
+    def _summary_dir(self):
+        return os.path.join(
+            self.get_output_dir(),
+            "Combine",
+            self._outdir(),
+            self._fit_folder_name(),
+            "asimov",
+            "scans",
+            "perCat",
+        )
+
+    def _output_base(self):
+        suffix = "stat_syst" if self.include_stat_error else "total"
+        return os.path.join(self._summary_dir(), f"scan_MH_perCat_{suffix}")
+
+    def output(self):
+        output = [self._summary_dir()]
+        output += [self._output_base() + ext for ext in [".root", ".pdf", ".png"]]
+        return [law.LocalFileTarget(path) for path in output]
+
+
+
+    def _label_for_cat(self, cat):
+        label = re.sub(r"([A-Za-z]+)cat([0-9]+)$", r"\1 cat\2", cat)
+        label = label.replace("notEBEB", "notEBEB ")
+        return f"CMS H#gamma#gamma {label}"
+
+    def _unwrap_workflow_input(self, value):
+        if isinstance(value, dict) and "collection" in value:
+            targets = value["collection"].targets
+            if isinstance(targets, dict):
+                return next(iter(targets.values()))
+
+            if isinstance(targets, (list, tuple)):
+                return targets[0]
+            return targets
+        return value
+
+    def run(self):
+        if self.variable != "MH":
+            raise RuntimeError(
+                "CreateAsimovFitPerCat is currently intended for variable=MH scans"
+            )
+
+        cwd = os.getcwd()
+
+        try:
+            # Create output directory and move there
+            execute_command(
+                [f"mkdir -p {self._summary_dir()}"],
+                shell=True,
+            )
+            os.chdir(self._summary_dir())
+
+            # Inputs from CreateAsimovFitWrapper
+            inputs = self.input()
+
+            cats = self._scan_categories()
+            config = self.get_input_config()
+
+            # Get configured fit groups
+            groups = config["combine_fit"].get(
+                "group",
+                ["Syst,Stat"],
+            )
+
+            if isinstance(groups, str):
+                groups = [groups]
+
+            # The per-category tasks use the first configured group
+            main_group_label = groups[0].replace(",", "_")
+
+            arguments = [
+                "python3",
+                os.path.join(
+                    os.environ["ANALYSIS_PATH"],
+                    "Plots",
+                    "plotAsimovScanSummary.py",
+                ),
+                "--POI",
+                "MH",
+                "--output",
+                self._output_base(),
+                "--band-from",
+                str(len(cats) + 1),
+                "--split-after",
+                str(len(cats)),
+                "--x-title",
+                "m_{H} (GeV)",
+                "--x-min",
+                str(
+                    config["combine_fit"].get(
+                        "xMin",
+                        124,
+                    )
+                ),
+                "--x-max",
+                str(
+                    config["combine_fit"].get(
+                        "xMax",
+                        126,
+                    )
+                ),
+                "--cms-label",
+                "Internal",
+                "--lumi-label",
+                get_lumi_label(self.year),
+            ]
+
+            if self.show_values:
+                arguments.append("--show-values")
+
+            if self.include_stat_error:
+                arguments.append("--show-breakdown")
+
+            # ------------------------------------------------------------
+            # Per-category scans
+            # ------------------------------------------------------------
+            for cat in cats:
+                if cat not in inputs["categories"]:
+                    raise RuntimeError(
+                        f"Category '{cat}' not found in self.input()['categories']. "
+                        f"Available categories: "
+                        f"{list(inputs['categories'].keys())}"
+                    )
+
+                cat_input = self._unwrap_workflow_input(inputs["categories"][cat])
+
+                try:
+                    # print(cat_input)
+                    total_scan = (
+                        cat_input["scans"]["total"]["MH"].path
+                    )
+                except KeyError as exc:
+                    raise RuntimeError(
+                        f"Could not find total MH scan for category '{cat}'. "
+                        f"Available input structure: {cat_input}"
+                    ) from exc
+
+                scan_argument = (
+                    f"{self._label_for_cat(cat)}:"
+                    f"{total_scan}"
+                )
+
+                if self.include_stat_error:
+                    try:
+                        stat_scan = (
+                            cat_input["scans"]["stat"]["MH"].path
+                        )
+                    except KeyError as exc:
+                        raise RuntimeError(
+                            f"Could not find stat-only MH scan for category '{cat}'. "
+                            f"Available input structure: {cat_input}"
+                        ) from exc
+
+                    scan_argument += f":{stat_scan}"
+
+                arguments += [
+                    "--scan",
+                    scan_argument,
+                ]
+
+            # ------------------------------------------------------------
+            # Inclusive scan
+            # ------------------------------------------------------------
+            if main_group_label not in inputs["inclusive"]:
+                raise RuntimeError(
+                    f"Inclusive group '{main_group_label}' not found. "
+                    f"Available groups: {list(inputs['inclusive'].keys())}"
+                )
+
+            inclusive_input = self._unwrap_workflow_input(inputs["inclusive"][main_group_label])
+
+            try:
+                inclusive_scan = (
+                    inclusive_input["scans"]["total"]["MH"].path
+                )
+            except KeyError as exc:
+                raise RuntimeError(
+                    "Could not find inclusive total MH scan. "
+                    f"Available input structure: {inclusive_input}"
+                ) from exc
+
+            arguments += [
+                "--scan",
+                f"CMS H#gamma#gamma {self.year}:{inclusive_scan}",
+            ]
+
+            # ------------------------------------------------------------
+            # Run plotting script
+            # ------------------------------------------------------------
+            print("Running command:")
+            print(" ".join(arguments))
+
+            result = subprocess.run(
+                arguments,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+
+            print("Script output:")
+            print(result.stdout)
+
+            if result.stderr:
+                print("Script stderr:")
+                print(result.stderr)
+
+            print("Script executed successfully.")
+
+        except subprocess.CalledProcessError as e:
+            print("Error executing plotAsimovScanSummary.py")
+
+            if e.stdout:
+                print("stdout:")
+                print(e.stdout)
+
+            if e.stderr:
+                print("stderr:")
+                print(e.stderr)
+
+            raise
+
+        finally:
+            os.chdir(cwd)
     
 class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
 
