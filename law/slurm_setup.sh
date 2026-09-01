@@ -2,7 +2,7 @@
 
 action() {
 
-    cd /work/niharrin/t35/CMSSW_14_1_0_pre4/src/flashggFinalFit
+    cd /feynman/work/dphp/pg280968/CMSSW_14_1_0_pre4/src/flashggFinalFit
     export ANALYSIS_PATH="$(pwd)"
     cmsenv
     local shell_is_zsh="$( [ -z "${ZSH_VERSION}" ] && echo "false" || echo "true" )"

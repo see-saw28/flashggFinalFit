@@ -15,11 +15,12 @@ def get_options():
   parser.add_option("--loadSnapshot", dest="loadSnapshot", default=None, help="Load best-fit snapshot name")
   parser.add_option('--mass', dest='mass', default='125.38', help="Higgs mass")
   parser.add_option('--seed', dest='seed', default='-1', help="Random seed")
+  parser.add_option('--common_opt', dest='common_opt', default='""', help="opt for combine -M GenerateOnly command")
   return parser.parse_args()
 (opt,args) = get_options()
 
 # Generate toy from workspace
-gen_cmd = f"combine {opt.inputWSFile} -m {opt.mass} -M GenerateOnly -t 1 -s {opt.seed} -n _gen_pseudoToy --saveToys --expectSignal 1"
+gen_cmd = f"combine {opt.inputWSFile} -m {opt.mass} -M GenerateOnly -t 1 -s {opt.seed} -n _gen_pseudoToy --saveToys --expectSignal 1 {opt.common_opt}"
 if opt.loadSnapshot:
     gen_cmd += f" --snapshotName {opt.loadSnapshot}"
 run(gen_cmd)

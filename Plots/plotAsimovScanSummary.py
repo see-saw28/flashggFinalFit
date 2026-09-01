@@ -14,7 +14,7 @@ import CombineHarvester.CombineTools.plotting as plot
 ROOT.PyConfig.IgnoreCommandLineOptions = True
 ROOT.gROOT.SetBatch(ROOT.kTRUE)
 
-plot.ModTDRStyle(width=900, height=650, l=0.26, r=0.05, t=0.08, b=0.12)
+plot.ModTDRStyle(width=1100, height=650, l=0.26, r=0.05, t=0.08, b=0.12)
 ROOT.gStyle.SetNdivisions(510, "XYZ")
 ROOT.gStyle.SetMarkerSize(1.2)
 
@@ -158,6 +158,18 @@ def main():
     parser.add_argument("--precision", type=int, default=3)
     parser.add_argument("--marker-color", type=int, default=1)
     parser.add_argument("--stat-color", type=int, default=38)
+    # Layout controls.  Margins are fractions of the full canvas.  A wider
+    # right margin is selected automatically when values or their breakdown
+    # are printed, but every value can be overridden from the command line.
+    parser.add_argument("--canvas-width", type=int, default=1200)
+    parser.add_argument("--canvas-height", type=int, default=None)
+    parser.add_argument("--left-margin", type=float, default=0.20)
+    parser.add_argument("--right-margin", type=float, default=None)
+    parser.add_argument("--top-margin", type=float, default=0.08)
+    parser.add_argument("--bottom-margin", type=float, default=0.15)
+    parser.add_argument("--cms-label-offset", type=float, default=0.055,
+                        help="Horizontal NDC distance between CMS and its extra label")
+    parser.add_argument("--value-text-size", type=float, default=0.026)
     args = parser.parse_args()
 
     fixed_name = args.POI
@@ -218,13 +230,22 @@ def main():
         xmax += 1.0
 
     n = len(rows)
-    height = max(520, 120 + 72 * n)
-    canv = ROOT.TCanvas(args.output, args.output, 900, height)
+    height = args.canvas_height if args.canvas_height is not None else max(520, 120 + 72 * n)
+    if args.right_margin is not None:
+        right_margin = args.right_margin
+    elif args.show_values and args.show_breakdown:
+        right_margin = 0.28
+    elif args.show_values:
+        right_margin = 0.20
+    else:
+        right_margin = 0.05
+
+    canv = ROOT.TCanvas(args.output, args.output, args.canvas_width, height)
     pad = ROOT.TPad("pad", "pad", 0, 0, 1, 1)
-    pad.SetLeftMargin(0.27)
-    pad.SetRightMargin(0.05 if not args.show_values else 0.22)
-    pad.SetTopMargin(0.10)
-    pad.SetBottomMargin(0.13)
+    pad.SetLeftMargin(args.left_margin)
+    pad.SetRightMargin(right_margin)
+    pad.SetTopMargin(args.top_margin)
+    pad.SetBottomMargin(args.bottom_margin)
     pad.SetTicks(1, 1)
     pad.Draw()
     pad.cd()
@@ -234,7 +255,10 @@ def main():
     frame.GetXaxis().SetTitle(x_title)
     frame.GetXaxis().SetTitleSize(0.060)
     frame.GetXaxis().SetLabelSize(0.050)
-    frame.GetYaxis().SetLabelSize(0.045)
+    # Five major intervals remain readable even for the narrow MH range.
+    frame.GetXaxis().SetNdivisions(505)
+    frame.GetYaxis().SetLabelSize(0.05)
+    frame.GetYaxis().SetLabelOffset(0.010)
     frame.GetYaxis().SetTickLength(0)
     for i, row in enumerate(rows):
         frame.GetYaxis().SetBinLabel(n - i, row["label"])
@@ -283,15 +307,16 @@ def main():
 
     if args.show_values:
         text = ROOT.TLatex()
-        text.SetTextFont(42)
-        text.SetTextSize(0.030)
+        text.SetTextFont(52)
+        text.SetTextSize(args.value_text_size)
         text.SetTextAlign(12)
-        x_text = xmax + 0.015 * (xmax - xmin)
+        x_text = xmax + 0.020 * (xmax - xmin)
         for i, row in enumerate(rows):
             y = n - i - 0.5
             value = format_unc((row["best"], row["err_hi"], -row["err_lo"]), args.precision)
             if args.show_breakdown and row["stat"] is not None:
-                value += "  stat %.*f/%.*f  syst %.*f/%.*f" % (
+                value += " = %.*f ^{+%.*f}_{-%.*f}(stat)  ^{+%.*f}_{-%.*f}(syst) GeV" % (
+                    args.precision, row["best"],
                     args.precision, row["stat_hi"], args.precision, row["stat_lo"],
                     args.precision, row["syst_hi"], args.precision, row["syst_lo"],
                 )
@@ -302,19 +327,23 @@ def main():
     cms.SetTextAlign(11)
     cms.SetTextFont(61)
     cms.SetTextSize(0.060)
-    cms.DrawLatex(0.03, 0.93, "CMS")
+    header_y = 1.0 - 0.8 * args.top_margin
+    cms.DrawLatex(args.left_margin, header_y, "CMS")
     if args.cms_label:
         cms.SetTextFont(52)
         cms.SetTextSize(0.050)
-        cms.DrawLatex(0.145, 0.93, args.cms_label)
+        cms.DrawLatex(args.left_margin + args.cms_label_offset, header_y, args.cms_label)
     cms.SetTextFont(42)
     cms.SetTextAlign(31)
     cms.SetTextSize(0.055)
-    cms.DrawLatex(0.95, 0.93, args.lumi_label)
+    cms.DrawLatex(1.0 - right_margin, header_y, args.lumi_label)
 
     if args.show_breakdown and stat_i > 0:
-        legend = ROOT.TLegend(0.62, 0.82, 0.92, 0.89, "", "NBNDC")
-        legend.SetNColumns(2)
+        plot_right = 1.0 - right_margin
+        plot_top = 1.0 - args.top_margin
+        legend = ROOT.TLegend(plot_right - 0.13, plot_top - 0.10,
+                              plot_right - 0.01, plot_top - 0.01, "", "NBNDC")
+        legend.SetNColumns(1)
         legend.AddEntry(full_graph, "Total", "LP")
         legend.AddEntry(stat_graph, "Stat", "LP")
         legend.Draw()

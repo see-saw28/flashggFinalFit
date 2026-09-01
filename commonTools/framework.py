@@ -71,10 +71,18 @@ class Task(law.Task):
         
         return config
 
-    def get_cats(self):
+    def get_cats(self, return_list=False):
         config = self.get_input_config()
         data_input_path = config['inputFiles']['Trees2WSData'] 
-        return extractListOfCatsFromHiggsDNAAllData(data_input_path)
+        cats = extractListOfCatsFromHiggsDNAAllData(data_input_path)
+        if return_list:
+            return cats.split(",")
+        return cats
+
+    @property
+    def outdir(self):
+        return f"outdir_{self.year}_{self.variable}" if self.variable != '' else f"outdir_{self.year}"
+
 
     def store_parts(self):
         return (self.__class__.__name__, self.version)
@@ -229,7 +237,7 @@ class SlurmWorkflow(law.slurm.SlurmWorkflow):
     """
 
     slurm_partition = luigi.Parameter(
-        default="standard",
+        default="htc_interactive",
         significant=False,
         description="target queue partition; default: standard",
     )
@@ -273,5 +281,6 @@ class SlurmWorkflow(law.slurm.SlurmWorkflow):
         config.custom_content.append(("time", job_time))
         config.custom_content.append(("mem", self.slurm_memory))
         config.custom_content.append(("nodes", 1))
+        # config.custom_content.append(("exclude", "feynmanvnc01,feynmanvnc02"))
 
         return config
