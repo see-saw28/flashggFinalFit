@@ -57,7 +57,7 @@ def get_lumi_label(year):
 
 _PDFINDEX_CACHE = {}
 
-HIGGS_MASS = f"125.07"
+HIGGS_MASS = 125.07
 
 def _save_specified_index_args(pdf_indices):
     save_specified_index = ",".join(pdf_indices)
@@ -551,7 +551,7 @@ class CombineDatacards(Task):
 
         # Use the repository root (same base_dir as in run()) instead of cwd.
         base_dir = Path(__file__).resolve().parent.parent
-        combined_label = self.yea
+        combined_label = self.year
 
         if self.variable == '':
             combined_card_path = os.path.join(
@@ -669,7 +669,7 @@ class RunText2Workspace(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, l
             "--outputDir", datacards_dir,
             "--outputName", workspace_name,
             "--mode", mode,
-            "--common_opts", f"-m {HIGGS_MASS} higgsMassRange=122,128 --channel-masks",
+            "--common_opts", f"-m {HIGGS_MASS} higgsMassRange=122,128 --channel-masks", # higgsMassRange is redefined in model.py:floatingHiggsMass
             "--batch", "local",
         ]
         if self.variable != '':
@@ -5554,8 +5554,11 @@ class UnblindedGoodnessOfFit(Task):
 
 
 class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
-    is_postfit = law.Parameter(default=False, description="Flag that signifies if toys are created for postfit mass distributions.")
 
+    is_postfit = luigi.BoolParameter(
+        default=False,
+        description="Flag that signifies if toys are created for postfit mass distributions.",
+    )
 
     # def requires(self):
     def workflow_requires(self):
@@ -5641,8 +5644,6 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
                 
         for _, current_output_path in enumerate(output):
             outputFileTargets.append(law.LocalFileTarget(current_output_path))
-            
-        # print(outputFileTargets)
 
         return outputFileTargets
 
@@ -6054,33 +6055,12 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
                 # Handle the case where the file does not exist or is inaccessible
                 print(f"Error creating file. Probably I/O error.")
                 return False
-
-        # Copy the files back to pnfs if we are on slurm/psi
-        if self.batch_flavor == "slurm/psi":
-            # Have to copy over the output to the final directory
-            # Don't forget to VOMS!
-            if "/work" in output_dir:
-                slurm_copy_command = [
-                    'cp', '-rf',
-                    f"{os.environ['TARGET_PATH']}/Combine/",
-                    output_dir
-                ]
-            else:
-                slurm_copy_command = [
-                    'xrdcp', '-rf',
-                    f"{os.environ['TARGET_PATH']}/Combine/",
-                    'root://t3dcachedb03.psi.ch:1094//'+output_dir
-                ]
-            print(slurm_copy_command)
-            execute_command(slurm_copy_command)
-            # Clean up the temporary directory
-            shutil.rmtree(os.environ["TARGET_PATH"])
         
         os.chdir(cwd)
         
 class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
-    is_postfit = luigi.BoolParameter(default=False, description="Flag that signifies if toys are created for postfit mass distributions.")
 
+    is_postfit = luigi.BoolParameter(default=False, description="Flag that signifies if toys are created for postfit mass distributions.")
 
     # def requires(self):
     def _requires_single(self):
@@ -6096,9 +6076,7 @@ class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law
             if self.is_postfit:
                 tasks["MggToyGeneration"] = MggToyGeneration.req(
                     self,
-                    year=self.year,
                     output_dir=output_dir, 
-                    is_postfit=self.is_postfit, 
                     workflow=mggConfig["execution"], 
                     slurm_partition=mggConfig.get('batchPartition', None), 
                     slurm_memory=mggConfig.get('batchMemory', None), 
@@ -6109,9 +6087,7 @@ class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law
             else:
                 tasks["MggToyGeneration"] = MggToyGeneration.req(
                     self,
-                    output_dir=output_dir, 
-                    year=self.year,
-                    is_postfit=self.is_postfit, 
+                    output_dir=output_dir,  
                     workflow=mggConfig["execution"], 
                     slurm_partition=mggConfig.get('batchPartition', None), 
                     slurm_memory=mggConfig.get('batchMemory', None), 
@@ -6157,7 +6133,7 @@ class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law
                 reco_cats_with_bmw = self.get_cats(return_list=True)
 
         elif self.variable == '':
-            fitFolderName = f'runFits_{self.variable}'
+            fitFolderName = 'runFits_mu_fiducial'
             reco_cats_with_bmw = ['cat0', 'cat1', 'cat2']
             if "_" in self.year:
                 cats = []
@@ -6212,200 +6188,119 @@ class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law
 
     def run(self):
         cat = self.variable
-       
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
+        fitFolderName = (
+            'runFits_mu_fiducial' if self.variable == ''
+            else f'runFits_{self.variable}'
+        )
 
-        else:
-            fitFolderName = f'runFits_{self.variable}'
-
-        #Load central config file
-        output_dir = self.get_output_dir()  
         config = self.get_input_config()
-            
+        output_dir = self.get_output_dir()
         main_dir = os.getcwd()
-        
+        stage = 'postFit' if self.is_postfit else 'preFit'
+        stage_dir = os.path.join(
+            output_dir, 'Combine', self.outdir, fitFolderName, stage
+        )
+        plot_dir = os.path.join(stage_dir, f'SplusBModels_{cat}')
+        execute_command([f'mkdir -p {plot_dir}'], shell=True)
+
+        skipIndivCat = False
+        if self.variable == '':
+            reco_cats_with_bmw = ['cat0', 'cat1', 'cat2']
+        elif self.variable == 'tuto' and not self.is_postfit:
+            reco_cats_with_bmw = [
+                'EBEB_highR9highR9', 'EBEB_highR9lowR9', 'EBEB_lowR9highR9',
+                'EBEE_highR9highR9', 'EBEE_highR9lowR9', 'EBEE_lowR9highR9',
+                'EEEB_highR9highR9', 'EEEB_highR9lowR9', 'EEEB_lowR9highR9',
+                'EEEE_incl',
+            ]
+        elif self.variable == 'MH':
+            if len(yearMap[self.year]) > 1:
+                skipIndivCat = True
+                reco_cats_with_bmw = ['all']
+            else:
+                reco_cats_with_bmw = self.get_cats().split(',')
+        else:
+            cat_suffix = '_'.join(cat.split('_')[2:])
+            reco_cats_with_bmw = [
+                reco_cat
+                for reco_cat in combineVariableDict(
+                    self.variable, self.year
+                )['catsStrWithBMW']
+                if cat_suffix in reco_cat
+            ]
+
+        if self.variable not in ('MH', 'tuto') and '_' in self.year:
+            reco_cats_with_bmw = [
+                f"Y{year[-2:]}_{reco_cat}"
+                for year in self.year.split('_')
+                for reco_cat in reco_cats_with_bmw
+            ]
+
         if self.is_postfit:
+            input_workspace = os.path.join(
+                plot_dir,
+                f'higgsCombine_bestfit_syst_obs_{cat}.MultiDimFit.mH{HIGGS_MASS}.root',
+            )
+        else:
+            datacard_name = (
+                f'Datacard_{self.year}.root' if self.variable == ''
+                else f'Datacard_{self.variable}_{self.year}.root'
+            )
+            input_workspace = os.path.join(
+                output_dir, 'Combine', self.outdir, datacard_name
+            )
 
-            
-            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/postFit/SplusBModels_{cat}/'], shell=True)
-            os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit'))
-            
-            best_fit = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', f'higgsCombine_bestfit_syst_obs_{cat}.MultiDimFit.mH{HIGGS_MASS}.root')
-            skipIndivCat = False
-            if self.variable == '':
-                # firstStep_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-                reco_cats_with_bmw = ['cat0', 'cat1', 'cat2']
+        arguments = [
+            'python3',
+            os.path.join(
+                os.environ['ANALYSIS_PATH'], 'Plots', 'makeSplusBModelPlot.py'
+            ),
+            '--inputWSFile', input_workspace,
+            '--cats', ','.join(reco_cats_with_bmw),
+            '--lumiLabel', get_lumi_label(self.year),
+            '--isPreliminary',
+            '--doZeroes',
+            '--translateCats', os.path.join(
+                os.environ['ANALYSIS_PATH'], 'Plots', 'cats.json'
+            ),
+            '--doSumCategories',
+            '--doCatWeights',
+            '--saveWeights',
+            '--ext', f'_{cat}',
+            '--POI', cat,
+        ]
 
-                if "_" in self.year:
-                    cats = []
-                    for y in self.year.split("_"):
-                        y2 = y[-2:]
-                        for c in reco_cats_with_bmw:
-                            cats.append(f"Y{y2}_{c}")
-                    reco_cats_with_bmw = cats
-
-            elif self.variable == 'MH':
-                fitFolderName = 'runFits_MH'
-                years = yearMap[self.year]
-                if len(years) > 1:
-                    skipIndivCat = True
-                    reco_cats_with_bmw = ['all']
-                else:
-                    reco_cats_with_bmw = self.get_cats().split(",")
-            else:
-                # firstStep_path = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'dataFit', f'higgsCombineDataPostFitScanFit_{cat}.MultiDimFit.mH{HIGGS_MASS}.root')
-                reco_cats_with_bmw = [element for element in combineVariableDict(self.variable, self.year)['catsStrWithBMW'] if "_".join(cat.split("_")[2:]) in element]
-                if "_" in self.year:
-                    cats = []
-                    for y in self.year.split("_"):
-                        y2 = y[-2:]
-                        for c in reco_cats_with_bmw:
-                            cats.append(f"Y{y2}_{c}")
-                    reco_cats_with_bmw = cats
-
-            arguments = [
-                "python3",
-                f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'makeSplusBModelPlot.py')}",
-                "--inputWSFile", best_fit,
-                "--loadSnapshot", f"{config['combine_mggToys']['loadSnapshot']}",
-                "--cats", f"{','.join(reco_cats_with_bmw)}",
-                "--lumiLabel", get_lumi_label(self.year),
-                "--isPreliminary",
-                "--doZeroes",
-                "--unblind",
-                "--translateCats", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'cats.json')}",
-                "--doSumCategories", 
-                "--doCatWeights",
-                "--saveWeights",
-                "--ext", f"_{cat}",
-                "--POI", f"{cat}",
-                "--pseudoToy",
-                "--showPOIs"
+        if self.is_postfit:
+            arguments += [
+                '--loadSnapshot', config['combine_mggToys']['loadSnapshot'],
+                '--unblind',
+                '--pseudoToy',
             ]
-            if config['combine_mggToys']['doBands']:
-                arguments.append("--doBands")
-                arguments.append("--doToyVeto")
-                arguments.append("--saveToyYields")
-
-            if skipIndivCat:
-                arguments.append("--skipIndividualCatPlots")
-            command = arguments
-            print(' '.join(command))
-            try:
-                result = subprocess.run(command, check=True, text=True, capture_output=True)
-                print("Script output:", result.stdout)
-                print("Script executed successfully.")
-            except subprocess.CalledProcessError as e:
-                print("Error executing script:", e.stderr)
-            
-            # Change directory
-            # os.chdir(f"./SplusBModels_{cat}")
-
-            # if self.variable != "":
-            #     # Extract parts from the parameter
-            #     parts = cat.split('_')
-            #     pattern = f"{parts[2]}_{parts[3]}"
-
-            #     # Define source and target directories
-            #     source_dir = "."
-            #     target_dir = "../Plots"
-
-            #     # Iterate over files in the source directory
-            #     for filename in os.listdir(source_dir):
-            #         # Check if the pattern is in the filename
-            #         if pattern in filename:
-            #             # Construct full source and destination paths
-            #             source_path = os.path.join(source_dir, filename)
-            #             target_path = os.path.join(target_dir, filename)
-            #             # Copy the file to the target directory
-            #             shutil.copy(source_path, target_path)
-            #             print(f"Copied {filename} to {target_dir}")
-
-            # Go back one directory
-            os.chdir("..")
-            
-        else: 
-            
-            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/preFit/SplusBModels_{cat}/'], shell=True)
-            os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit'))
-            
-            if self.variable == '':
-                datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-            else:
-                datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
-
-            skipIndivCat = False
-            if self.variable == '':
-                reco_cats_with_bmw = ['cat0', 'cat1', 'cat2']
-
-                if "_" in self.year:
-                    cats = []
-                    for y in self.year.split("_"):
-                        y2 = y[-2:]
-                        for c in reco_cats_with_bmw:
-                            cats.append(f"Y{y2}_{c}")
-                    reco_cats_with_bmw = cats
-
-            elif self.variable == 'tuto':
-                reco_cats_with_bmw = ['EBEB_highR9highR9', 'EBEB_highR9lowR9', 'EBEB_lowR9highR9', 'EBEE_highR9highR9', 'EBEE_highR9lowR9', 'EBEE_lowR9highR9', 'EEEB_highR9highR9', 'EEEB_highR9lowR9', 'EEEB_lowR9highR9', 'EEEE_incl']
-
-            elif self.variable == 'MH':
-                fitFolderName = 'runFits_MH'
-                years = yearMap[self.year]
-                if len(years) > 1:
-                    skipIndivCat = True
-                    reco_cats_with_bmw = ['all']
-                else:
-                    reco_cats_with_bmw = self.get_cats().split(",")
-            else:
-                reco_cats_with_bmw = [element for element in combineVariableDict(self.variable, self.year)['catsStrWithBMW'] if "_".join(cat.split("_")[2:]) in element]
-
-                if "_" in self.year:
-                    cats = []
-                    for y in self.year.split("_"):
-                        y2 = y[-2:]
-                        for c in reco_cats_with_bmw:
-                            cats.append(f"Y{y2}_{c}")
-                    reco_cats_with_bmw = cats
-
-            arguments = [
-                "python3",
-                f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'makeSplusBModelPlot.py')}",
-                "--inputWSFile", datacard_path,
-                "--cats", f"{','.join(reco_cats_with_bmw)}",
-                "--lumiLabel", get_lumi_label(self.year),
-                "--isPreliminary",
-                "--doZeroes",
-                "--translateCats", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'cats.json')}",
-                "--doSumCategories",
-                "--doCatWeights",
-                "--saveWeights",
-                "--blindingRegion", "115,135", 
-                "--mass", f"{HIGGS_MASS}",
-                "--ext", f"_{cat}",
-                "--POI", f"{cat}",
-                "--showPOIs"
+        else:
+            arguments += [
+                '--blindingRegion', '115,135',
+                '--mass', f'{HIGGS_MASS}',
+                '--showPOIs',
             ]
-            # merge per year cat together
-            # "--cats Y22_BEST,Y23_BEST,Y24_BEST,Y25_BEST" 
-            if skipIndivCat:
-                arguments.append("--skipIndividualCatPlots")
 
-            if config['combine_mggToys']['doBands']:
-                arguments.append("--doBands")
-                arguments.append("--doToyVeto")
-                arguments.append("--saveToyYields")
-            command = arguments
-            print(' '.join(command))
-            try:
-                result = subprocess.run(command, check=True, text=True, capture_output=True)
-                print("Script output:", result.stdout)
-                print("Script executed successfully.")
-            except subprocess.CalledProcessError as e:
-                print("Error executing script:", e.stderr)
+        if skipIndivCat:
+            arguments.append('--skipIndividualCatPlots')
+        if config['combine_mggToys']['doBands']:
+            arguments += ['--doBands', '--doToyVeto', '--saveToyYields']
 
-        os.chdir(main_dir)
+        print(' '.join(arguments))
+        try:
+            os.chdir(stage_dir)
+            result = subprocess.run(
+                arguments, check=True, text=True, capture_output=True
+            )
+            print("Script output:", result.stdout)
+            print("Script executed successfully.")
+        except subprocess.CalledProcessError as exc:
+            print("Error executing script:", exc.stderr)
+            raise
+        finally:
+            os.chdir(main_dir)
         
         
 class PValueCalculation(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):

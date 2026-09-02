@@ -245,12 +245,12 @@ def makeSplusBPlot(workspace,hD,hSB,hB,hS,hDr,hBr,hSr,cat,options,dB=None,reduce
   lat0.DrawLatex(0.6,0.8,"#scale[0.6]{%s}"%Translate(cat,translateCats))
   #lat0.DrawLatex(0.15,0.83,"#scale[0.75]{H#rightarrow#gamma#gamma}")
 
-  if(options.loadSnapshot is not None):
-      mhhat = workspace.var("MH").getVal()
-      if options.POI == 'MH':
-        muhat = workspace.var("r").getVal()
-      elif options.POI != '':
-        muhat = workspace.var(options.POI).getVal()
+  # if(options.loadSnapshot is not None):
+  mhhat = workspace.var("MH").getVal()
+  if options.POI == 'MH':
+    muhat = workspace.var("r").getVal()
+  elif options.POI != '':
+    muhat = workspace.var(options.POI).getVal()
       
 
   if options.showPOIs:
@@ -259,15 +259,15 @@ def makeSplusBPlot(workspace,hD,hSB,hB,hS,hDr,hBr,hSr,cat,options,dB=None,reduce
     lat0.DrawLatex(0.15,0.83,"#scale[0.75]{H #rightarrow #gamma#gamma")
   if "PseudoToy" in options.inputWSFile or options.pseudoToy:
     lat0.DrawLatex(0.15,0.7,"#scale[0.7]{Pseudo data}")
-  if(options.loadSnapshot is not None):
+  # if(options.loadSnapshot is not None):
     #lat0.DrawLatex(0.15,0.77,"#scale[0.6]{#vec{#alpha} = STXS stage 1.2 minimal}")
     #lat0.DrawLatex(0.15,0.77,"#scale[0.6]{#vec{#alpha} = (#mu_{ggH}, #mu_{VBF}, #mu_{VH}, #mu_{top})}")
     #lat0.DrawLatex(0.15,0.77,"#scale[0.5]{(#hat{#mu}_{ggH},#hat{#mu}_{VBF},#hat{#mu}_{VH},#hat{#mu}_{top}) = (1.07,1.04,1.34,1.35)}")
     #lat0.DrawLatex(0.15,0.77,"#scale[0.75]{#hat{#mu} = 1.03}")
     #muhat_ggh, muhat_vbf, muhat_vh, muhat_top, mhhat = workspace.var("r_ggH").getVal(), workspace.var("r_VBF").getVal(), workspace.var("r_VH").getVal(), workspace.var("r_top").getVal(), workspace.var("MH").getVal()
     #lat0.DrawLatex(0.13,0.77,"#scale[0.6]{(#hat{#mu}_{ggH},#hat{#mu}_{VBF},#hat{#mu}_{VH},#hat{#mu}_{top}) = (%.2f,%.2f,%.2f,%.2f)}"%(muhat_ggh,muhat_vbf,muhat_vh,muhat_top))
-    if options.showPOIs:
-      lat0.DrawLatex(0.15,0.77,"#scale[0.75]{#hat{#mu} = %.2f}"%(muhat))
+  if options.showPOIs:
+    lat0.DrawLatex(0.15,0.77,"#scale[0.75]{#hat{#mu} = %.2f}"%(muhat))
     
   #elif options.parameterMap is not None:
   #  poiStr = ''
@@ -276,7 +276,7 @@ def makeSplusBPlot(workspace,hD,hSB,hB,hS,hDr,hBr,hSr,cat,options,dB=None,reduce
   #    poiStr += ' %s = %.1f,'%(Translate(k,translatePOIs),float(v))
   #  poiStr = poiStr[:-1]
   #  lat0.DrawLatex(0.13,0.77,"#scale[0.75]{%s}"%poiStr)
-  else: lat0.DrawLatex(0.15,0.77,"#scale[0.75]{#mu = 1.0}")
+  # else: lat0.DrawLatex(0.15,0.77,"#scale[0.75]{#mu = 1.0}")
   # Ratio plot
   pad2.cd()
   h_axes_ratio = hDr.Clone()
