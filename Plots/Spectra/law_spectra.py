@@ -86,7 +86,15 @@ class CreateDiffSpectra(law.Task):#(law.Task): #(Task, HTCondorWorkflow, law.Loc
             tasks["PValueCalculation"] = PValueCalculation(variable=self.variable, output_dir=output_dir, year=self.year, batch_flavor=self.batch_flavor, version=self.variable if self.variable != '' else 'inclusive', workflow=self.batch_system, slurm_partition=hesseConfig['batchPartition'], slurm_memory=hesseConfig['batchMemory'], slurm_max_runtime=hesseConfig['batchMaxRuntime'], htcondor_partition=hesseConfig['batchPartition'], htcondor_memory=hesseConfig['batchMemory'], htcondor_max_runtime=hesseConfig['batchMaxRuntime'])
             tasks["CreateUnblindedFit"] = CreateUnblindedFit(variable=self.variable, output_dir=output_dir, year=self.year, batch_flavor=self.batch_flavor, version=self.variable if self.variable != "" else "inclusive", workflow=self.batch_system)
         else:
-            tasks["CreateAsimovFit"] = CreateAsimovFit(variable=self.variable, output_dir=output_dir, year=self.year, batch_flavor=self.batch_flavor, version=self.variable if self.variable != '' else 'inclusive', workflow=self.batch_system)
+            tasks["CreateFit"] = CreateFit(
+                variable=self.variable,
+                output_dir=output_dir,
+                year=self.year,
+                batch_flavor=self.batch_flavor,
+                version=self.variable if self.variable != '' else 'inclusive',
+                workflow=self.batch_system,
+                is_postfit=False,
+            )
         
         return tasks
     

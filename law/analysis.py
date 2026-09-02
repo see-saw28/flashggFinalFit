@@ -59,7 +59,11 @@ class FinalFits(Task):
     def requires(self):
         years = yearMap[self.year]
         multi_year = len(years) > 1  # when combining years, only force per-year datacards
-        
+
+        if not self.combined and not self.yearly:
+            print("Please set either combined or yearly to True.")
+            exit(1)
+
         return {y:
             FinalFitsYear.req(
                 self,
@@ -136,22 +140,26 @@ class FinalFitsYear(Task):
             return tasks
 
         if self.unblinded_fits:
-            tasks["CreateUnblindedFit"] = CreateUnblindedFit.req(self, output_dir=output_dir, workflow=self.batch_system)
+            tasks["CreateLikelihoodFitObserved"] = CreateLikelihoodFitWrapper.req(
+                self, output_dir=output_dir, years=self.year, is_postfit=True
+            )
         if self.unblinded_stage_one:
             impactConfig = config["combine_impacts"]
             tasks["GoodnessOfFit"] = UnblindedGoodnessOfFit.req(self, output_dir=output_dir)
-            tasks["UnblindedImpactThirdStep"] = UnblindedImpactThirdStep.req(self, output_dir=output_dir, workflow=impactConfig["execution"], slurm_partition=impactConfig['batchPartition'], slurm_memory=impactConfig['batchMemory'], slurm_max_runtime=impactConfig['batchMaxRuntime'], htcondor_partition=impactConfig['batchPartition'], htcondor_memory=impactConfig['batchMemory'], htcondor_max_runtime=impactConfig['batchMaxRuntime'])
+            tasks["UnblindedImpactThirdStep"] = UnblindedImpactThirdStep.req(self, output_dir=output_dir)#, workflow=impactConfig["execution"], slurm_partition=impactConfig['batchPartition'], slurm_memory=impactConfig['batchMemory'], slurm_max_runtime=impactConfig['batchMaxRuntime'], htcondor_partition=impactConfig['batchPartition'], htcondor_memory=impactConfig['batchMemory'], htcondor_max_runtime=impactConfig['batchMaxRuntime'])
         if self.unblinded_stage_two:
             impactConfig = config["combine_impacts"]
             tasks["GoodnessOfFit"] = UnblindedGoodnessOfFit.req(self, output_dir=output_dir)
-            tasks["UnblindedImpactThirdStep"] = UnblindedImpactThirdStep.req(self, output_dir=output_dir, workflow=impactConfig["execution"], slurm_partition=impactConfig['batchPartition'], slurm_memory=impactConfig['batchMemory'], slurm_max_runtime=impactConfig['batchMaxRuntime'], htcondor_partition=impactConfig['batchPartition'], htcondor_memory=impactConfig['batchMemory'], htcondor_max_runtime=impactConfig['batchMaxRuntime'])
+            tasks["UnblindedImpactThirdStep"] = UnblindedImpactThirdStep.req(self, output_dir=output_dir)#, workflow=impactConfig["execution"], slurm_partition=impactConfig['batchPartition'], slurm_memory=impactConfig['batchMemory'], slurm_max_runtime=impactConfig['batchMaxRuntime'], htcondor_partition=impactConfig['batchPartition'], htcondor_memory=impactConfig['batchMemory'], htcondor_max_runtime=impactConfig['batchMaxRuntime'])
             tasks["MggDistribution"] = MggDistribution.req(self, output_dir=output_dir, years=self.year, is_postfit=True)
         if self.unblinded_stage_three:
             impactConfig = config["combine_impacts"]
             tasks["GoodnessOfFit"] = UnblindedGoodnessOfFit.req(self, output_dir=output_dir)
-            tasks["UnblindedImpactThirdStep"] = UnblindedImpactThirdStep.req(self, output_dir=output_dir, workflow=impactConfig["execution"], slurm_partition=impactConfig['batchPartition'], slurm_memory=impactConfig['batchMemory'], slurm_max_runtime=impactConfig['batchMaxRuntime'], htcondor_partition=impactConfig['batchPartition'], htcondor_memory=impactConfig['batchMemory'], htcondor_max_runtime=impactConfig['batchMaxRuntime'])
-            tasks["CreateUnblindedFit"] = CreateUnblindedFit.req(self, output_dir=output_dir, workflow=self.batch_system)
-            tasks["MggDistribution"] = MggDistribution.req(self, output_dir=output_dir, years=self.year, is_postfit=True)  # workflow=mggConfig["execution"], slurm_partition=mggConfig['batchPartition'], slurm_memory=mggConfig['batchMemory'], slurm_max_runtime=mggConfig['batchMaxRuntime'], htcondor_partition=mggConfig['batchPartition'], htcondor_memory=mggConfig['batchMemory'], htcondor_max_runtime=mggConfig['batchMaxRuntime'], is_postfit=True)
+            tasks["UnblindedImpactThirdStep"] = UnblindedImpactThirdStep.req(self, output_dir=output_dir)#, workflow=impactConfig["execution"], slurm_partition=impactConfig['batchPartition'], slurm_memory=impactConfig['batchMemory'], slurm_max_runtime=impactConfig['batchMaxRuntime'], htcondor_partition=impactConfig['batchPartition'], htcondor_memory=impactConfig['batchMemory'], htcondor_max_runtime=impactConfig['batchMaxRuntime'])
+            tasks["MggDistribution"] = MggDistribution.req(self, output_dir=output_dir, years=self.year, is_postfit=True)
+            tasks["CreateLikelihoodFitObserved"] = CreateLikelihoodFitWrapper.req(
+                self, output_dir=output_dir, years=self.year, is_postfit=True
+            )
         if self.unblinded_covcorr:
             hesseConfig = config["combine_hesse"]
             tasks["UnblindedCovCorr"] = UnblindedCovCorr.req(self, output_dir=output_dir, workflow=hesseConfig["execution"], slurm_partition=hesseConfig['batchPartition'], slurm_memory=hesseConfig['batchMemory'], slurm_max_runtime=hesseConfig['batchMaxRuntime'], htcondor_partition=hesseConfig['batchPartition'], htcondor_memory=hesseConfig['batchMemory'], htcondor_max_runtime=hesseConfig['batchMaxRuntime'])
@@ -159,7 +167,9 @@ class FinalFitsYear(Task):
             hesseConfig = config["combine_hesse"]
             tasks["PValueCalculation"] = PValueCalculation.req(self, output_dir=output_dir, workflow=self.batch_system, slurm_partition=hesseConfig['batchPartition'], slurm_memory=hesseConfig['batchMemory'], slurm_max_runtime=hesseConfig['batchMaxRuntime'], htcondor_partition=hesseConfig['batchPartition'], htcondor_memory=hesseConfig['batchMemory'], htcondor_max_runtime=hesseConfig['batchMaxRuntime'])
         if self.asimov_fits:
-            tasks["CreateAsimovFit"] = CreateAsimovFitWrapper.req(self, years=self.year, output_dir=output_dir)
+            tasks["CreateLikelihoodFitAsimov"] = CreateLikelihoodFitWrapper.req(
+                self, years=self.year, output_dir=output_dir, is_postfit=False
+            )
         if self.asimov_impacts:
             tasks["AsimovImpactThirdStep"] = AsimovImpactThirdStep.req(self, output_dir=output_dir, workflow=self.batch_system)
         if self.asimov_covcorr:
