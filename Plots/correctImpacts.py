@@ -122,7 +122,7 @@ with open(outImpacts,"w") as jf:
       if iv == (len(param['fit'])-1): jf.write("        %.16f\n"%v)
       else: jf.write("        %.16f,\n"%v)
     jf.write("      ],\n")
-    jf.write("      \"groups\": %s,\n"%param['groups'])
+    jf.write("      \"groups\": %s,\n" % json.dumps(param['groups']))
     for poi in pois: jf.write("      \"impact_%s\": %.16f,\n"%(poi,param['impacts_%s'%poi]))
     jf.write("      \"name\": \"%s\",\n"%param['name'])
     jf.write("      \"prefit\": [\n")

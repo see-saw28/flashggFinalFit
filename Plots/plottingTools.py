@@ -78,7 +78,7 @@ def extractBandProperties(data,category,bidx):
   props['down2sigma'] = np.percentile(data['%s_%g'%(c,bidx)].values,50*(1+math.erf(-2./math.sqrt(2))))
   return props
 
-def makeSplusBPlot(workspace,hD,hSB,hB,hS,hDr,hBr,hSr,cat,options,dB=None,reduceRange=None, mass=None):
+def makeSplusBPlot(workspace,hD,hSB,hB,hS,hDr,hBr,hSr,cat,options,dB=None,reduceRange=None):
   translateCats = {} if options.translateCats is None else LoadTranslations(options.translateCats)
   translatePOIs = {} if options.translatePOIs is None else LoadTranslations(options.translatePOIs)
   blindingRegion = [float(options.blindingRegion.split(",")[0]),float(options.blindingRegion.split(",")[1])]
@@ -244,12 +244,21 @@ def makeSplusBPlot(workspace,hD,hSB,hB,hS,hDr,hBr,hSr,cat,options,dB=None,reduce
   lat0.DrawLatex(0.565,0.92,options.lumiLabel)
   lat0.DrawLatex(0.6,0.8,"#scale[0.6]{%s}"%Translate(cat,translateCats))
   #lat0.DrawLatex(0.15,0.83,"#scale[0.75]{H#rightarrow#gamma#gamma}")
-  if mass is not None:
-    lat0.DrawLatex(0.15,0.83,"#scale[0.75]{H #rightarrow #gamma#gamma, m_{H} = %.2f GeV}"%mass)
+
+  if(options.loadSnapshot is not None):
+      mhhat = workspace.var("MH").getVal()
+      if options.POI == 'MH':
+        muhat = workspace.var("r").getVal()
+      elif options.POI != '':
+        muhat = workspace.var(options.POI).getVal()
+      
+
+  if options.showPOIs:
+    lat0.DrawLatex(0.15,0.83,"#scale[0.75]{H #rightarrow #gamma#gamma, m_{H} = %.2f GeV}"%mhhat)
   else:
     lat0.DrawLatex(0.15,0.83,"#scale[0.75]{H #rightarrow #gamma#gamma")
-  if "PseudoToy" in options.inputWSFile:
-    lat0.DrawLatex(0.15,0.76,"#scale[0.75]{Pseudo data}")
+  if "PseudoToy" in options.inputWSFile or options.pseudoToy:
+    lat0.DrawLatex(0.15,0.7,"#scale[0.7]{Pseudo data}")
   if(options.loadSnapshot is not None):
     #lat0.DrawLatex(0.15,0.77,"#scale[0.6]{#vec{#alpha} = STXS stage 1.2 minimal}")
     #lat0.DrawLatex(0.15,0.77,"#scale[0.6]{#vec{#alpha} = (#mu_{ggH}, #mu_{VBF}, #mu_{VH}, #mu_{top})}")
@@ -257,11 +266,9 @@ def makeSplusBPlot(workspace,hD,hSB,hB,hS,hDr,hBr,hSr,cat,options,dB=None,reduce
     #lat0.DrawLatex(0.15,0.77,"#scale[0.75]{#hat{#mu} = 1.03}")
     #muhat_ggh, muhat_vbf, muhat_vh, muhat_top, mhhat = workspace.var("r_ggH").getVal(), workspace.var("r_VBF").getVal(), workspace.var("r_VH").getVal(), workspace.var("r_top").getVal(), workspace.var("MH").getVal()
     #lat0.DrawLatex(0.13,0.77,"#scale[0.6]{(#hat{#mu}_{ggH},#hat{#mu}_{VBF},#hat{#mu}_{VH},#hat{#mu}_{top}) = (%.2f,%.2f,%.2f,%.2f)}"%(muhat_ggh,muhat_vbf,muhat_vh,muhat_top))
-    if options.POI != '':
-      muhat, mhhat = workspace.var(options.POI).getVal(), workspace.var("MH").getVal()
+    if options.showPOIs:
       lat0.DrawLatex(0.15,0.77,"#scale[0.75]{#hat{#mu} = %.2f}"%(muhat))
-    else:
-      lat0.DrawLatex(0.15,0.77,"#scale[0.6]{#vec{#alpha} = (#mu_{ggH}, #mu_{VBF}, #mu_{VH}, #mu_{top})}")
+    
   #elif options.parameterMap is not None:
   #  poiStr = ''
   #  for kv in options.parameterMap.split(","):
