@@ -292,8 +292,7 @@ def getSignalShapeNuisanceNames(s, options):
 
   years = [str(y).strip() for y in options.years.split(",") if str(y).strip()]
 
-  zmmgScaleNames = ["ScaleEBZmmg", "ScaleEEZmmg"]
-  isZmmgScale = s.get("name") in zmmgScaleNames or any(s["title"].endswith(name) for name in zmmgScaleNames)
+  isZmmgScale = "zmmg" in stitle.lower()
 
   if isZmmgScale:
     names = []
@@ -317,20 +316,29 @@ def writeNuisanceGroups(f, systematics, options):
   groups = OrderedDict()
 
   for syst in systematics:
-    group = syst.get("group", "Other")
+    syst_groups = syst.get("group", "Other")
 
-    if group in ["", None]:
-      group = "Other"
+    if isinstance(syst_groups, str):
+        syst_groups = [syst_groups]
+
+    syst_groups = [
+        group if group not in ("", None) else "Other"
+        for group in syst_groups
+    ]
 
     if syst["type"] == "signal_shape":
-      nuisance_names = getSignalShapeNuisanceNames(syst, options)
+        nuisance_names = getSignalShapeNuisanceNames(
+            syst,
+            options,
+        )
     else:
-      nuisance_names = [syst["title"]]
+        nuisance_names = [syst["title"]]
 
-    if group not in groups:
-      groups[group] = []
+    for group in syst_groups:
+        if group not in groups:
+            groups[group] = []
 
-    groups[group].extend(nuisance_names)
+        groups[group].extend(nuisance_names)
 
   f.write("\n")
   for group, nuisance_names in groups.items():
@@ -341,3 +349,4 @@ def writeNuisanceGroups(f, systematics, options):
     f.write("%-30s group = %s\n" % (group, " ".join(nuisance_names)))
 
   return True
+
