@@ -60,7 +60,7 @@ class FinalFits(Task):
         years = yearMap[self.year]
         multi_year = len(years) > 1  # when combining years, only force per-year datacards
 
-        if not self.combined and not self.yearly:
+        if not self.combined and not self.yearly and multi_year:
             print("Please set either combined or yearly to True.")
             exit(1)
 
@@ -167,9 +167,8 @@ class FinalFitsYear(Task):
             hesseConfig = config["combine_hesse"]
             tasks["PValueCalculation"] = PValueCalculation.req(self, output_dir=output_dir, workflow=self.batch_system, slurm_partition=hesseConfig['batchPartition'], slurm_memory=hesseConfig['batchMemory'], slurm_max_runtime=hesseConfig['batchMaxRuntime'], htcondor_partition=hesseConfig['batchPartition'], htcondor_memory=hesseConfig['batchMemory'], htcondor_max_runtime=hesseConfig['batchMaxRuntime'])
         if self.asimov_fits:
-            tasks["CreateLikelihoodFitAsimov"] = CreateLikelihoodFitWrapper.req(
-                self, years=self.year, output_dir=output_dir, is_postfit=False
-            )
+            tasks["CreateLikelihoodFitAsimov"] = CreateLikelihoodFitWrapper.req(self, years=self.year, output_dir=output_dir, is_postfit=False)
+            tasks["CreateFitPerCat"] = CreateFitPerCat.req(self, years=self.year, output_dir=output_dir, is_postfit=False)
         if self.asimov_impacts:
             tasks["AsimovImpactThirdStep"] = AsimovImpactThirdStep.req(self, output_dir=output_dir, workflow=self.batch_system)
         if self.asimov_covcorr:

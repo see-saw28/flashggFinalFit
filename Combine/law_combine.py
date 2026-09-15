@@ -215,8 +215,41 @@ def manually_move_t3(src, dst):
             print(f"Moving {filename}...")
             print(f"mv -f {file_path} {dst}/{filename}")
             execute_command([f"mv -f {file_path} {dst}/{filename}"], shell=True)
+
+class CombineTask(Task):
+
+    @property
+    def fitFolderName(self):
+        return f"runFits_{self.variable if self.variable else 'mu_fiducial'}"
+
+    @property
+    def datacard_path(self):
+        output_dir = self.get_output_dir()
+        if self.variable == '':
+            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
+        else:
+            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+        return datacard_path
+
+class CombineMultiYearTask(MultiYearTask):
+
+    @property
+    def fitFolderName(self):
+        return f"runFits_{self.variable if self.variable else 'mu_fiducial'}"
+
+    @property
+    def datacard_path(self):
+        output_dir = self.get_output_dir()
+        if self.variable == '':
+            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
+        else:
+            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+        return datacard_path
+
+
+
     
-class PrepareTheDirectory(MultiYearTask):#(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class PrepareTheDirectory(CombineMultiYearTask):#(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
     # def requires(self):
     def _requires_single(self):
@@ -259,10 +292,6 @@ class PrepareTheDirectory(MultiYearTask):#(law.Task): #(Task, HTCondorWorkflow, 
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
 
         input_path = config['inputFiles']['Trees2WSData']
 
@@ -282,7 +311,7 @@ class PrepareTheDirectory(MultiYearTask):#(law.Task): #(Task, HTCondorWorkflow, 
 
         output_data.append(os.path.join(output_dir, 'Combine', self.outdir))
 
-        output_data.append(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName))
+        output_data.append(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName))
 
         years = yearMap[self.year]
         if len(years) > 1:
@@ -320,10 +349,6 @@ class PrepareTheDirectory(MultiYearTask):#(law.Task): #(Task, HTCondorWorkflow, 
     def run(self):
         background_suffix = f""
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
 
         #Load central config file
         config = self.get_input_config()
@@ -332,7 +357,7 @@ class PrepareTheDirectory(MultiYearTask):#(law.Task): #(Task, HTCondorWorkflow, 
         # Creating the Combine directory alongside the Models dir
         safe_mkdir(os.path.join(output_dir, 'Combine', self.outdir))
         safe_mkdir(os.path.join(output_dir, 'Combine', self.outdir))
-        safe_mkdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName))
+        safe_mkdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName))
 
         signal_model_folder_name = config['datacard_yields']['sigModelWSDir'].split('/')[-2]
         background_model_folder_name = config['datacard_yields']['bkgModelWSDir'].split('/')[-2]
@@ -568,18 +593,13 @@ class RunText2Workspace(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, l
 
         # Define the file paths
         if self.variable == '':
-            output = [os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')]
+            output = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
         else:
-            output = [os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')]
+            output = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
 
-        outputFileTargets = []
-
-        for _, current_output_path in enumerate(output):
-            outputFileTargets.append(law.LocalFileTarget(current_output_path))
+        return law.LocalFileTarget(output)
         
-        # print(outputFileTargets)
-
-        return outputFileTargets
+       
 
     def run(self):      
 
@@ -636,7 +656,7 @@ class RunText2Workspace(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, l
             update_override_file(override_path, self.year, variable_key, pdf_indices)
         
         
-class AsimovFitCategoryFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovFitCategoryFirstStep(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
     cats = law.Parameter(description="Current category")
     
     # def requires(self):
@@ -679,42 +699,27 @@ class AsimovFitCategoryFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slur
         
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
             
-        output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov')]
+        output = {}
+        output['scan_folder'] = law.LocalFileTarget(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'asimov'))
 
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov', f'higgsCombinefirstStep_{current_branch}.MultiDimFit.mH{HIGGS_MASS}.root')]
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov', f'multidimfitfirstStep_{current_branch}.root')]
+        output['first_step_root'] = law.LocalFileTarget(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'asimov', f'higgsCombinefirstStep_{current_branch}.MultiDimFit.mH{HIGGS_MASS}.root'))
+        output['first_step_multidim'] = law.LocalFileTarget(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'asimov', f'multidimfitfirstStep_{current_branch}.root'))
         
-        outputFileTargets = []
-                
-        for _, current_output_path in enumerate(output):
-            outputFileTargets.append(law.LocalFileTarget(current_output_path))
 
-        return outputFileTargets
+        return output
 
     def run(self):
         current_branch = self.branch_data
 
         output_dir = self.get_output_dir()
-
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'  
+  
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
 
         cwd = os.getcwd()
 
         fit_dir = os.path.join(
-            output_dir, "Combine", self.outdir, fitFolderName, "asimov"
+            output_dir, "Combine", self.outdir, self.fitFolderName, "asimov"
         )
         os.makedirs(fit_dir, exist_ok=True)
         os.chdir(fit_dir)
@@ -729,7 +734,7 @@ class AsimovFitCategoryFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slur
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
-                datacard_path,
+                self.datacard_path,
                 "--freezeParameters", "MH",
                 "-m", f"{HIGGS_MASS}",
                 "-n", f"firstStep_{current_branch}",
@@ -752,9 +757,9 @@ class AsimovFitCategoryFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slur
         elif self.variable != '':
             if self.variable != "MH":
                 pdf_indices = combineVariableDict(self.variable, self.year)['pdfIndeces']
-                cache_key = (datacard_path,)
-                if cache_key not in _PDFINDEX_CACHE and os.path.exists(datacard_path):
-                    datacard_pdf_indices = extract_pdf_indices(datacard_path)
+                cache_key = (self.datacard_path,)
+                if cache_key not in _PDFINDEX_CACHE and os.path.exists(self.datacard_path):
+                    datacard_pdf_indices = extract_pdf_indices(self.datacard_path)
                     if datacard_pdf_indices:
                         _PDFINDEX_CACHE[cache_key] = datacard_pdf_indices
                 if cache_key in _PDFINDEX_CACHE:
@@ -765,7 +770,7 @@ class AsimovFitCategoryFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slur
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
-                datacard_path,
+                self.datacard_path,
                 # FIXME
                 "--freezeParameters", "r",
                 "-m", f"{HIGGS_MASS}",
@@ -801,42 +806,9 @@ class AsimovFitCategoryFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slur
             raise
         
         os.chdir(cwd)
-        
-class CreateAsimovFitFirstStep(Task): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
-        
-    def requires(self):
-        
-        config = self.get_input_config()
-        output_dir = self.get_output_dir()
-            
-        tasks = []
-        if self.variable in ["", "tuto"]:
-            cats = "r"
-        elif self.variable == "MH":
-            cats = "MH"
-        else:
-            cats = ",".join(combineVariableDict(self.variable, self.year)['paramStrNoOne'])
-        
-        impactConfig = config['combine_impacts']
-        
-        tasks += [AsimovFitCategoryFirstStep.req(self, output_dir=output_dir, cats=cats, workflow=impactConfig["execution"], slurm_partition=impactConfig['batchPartition'], slurm_memory=impactConfig['batchMemory'], slurm_max_runtime=impactConfig['batchMaxRuntime'], htcondor_partition=impactConfig['batchPartition'], htcondor_memory=impactConfig['batchMemory'], htcondor_max_runtime=impactConfig['batchMaxRuntime'])]
-            
-        return tasks
-    
-    def create_branch_map(self):
-        branch_list = [0]
-        
-        branch_map = {i: branch for i, branch in enumerate(branch_list)}
-        return branch_map
-
-    def output(self):
-        return self.input()
-
-    def run(self):
-        return True
 
 
-class FitCategoryFirstStep(Task):
+class FitCategoryFirstStep(CombineTask):
     """Common first-step adapter for expected and observed scans."""
 
     freeze = law.Parameter(default="")
@@ -845,23 +817,46 @@ class FitCategoryFirstStep(Task):
     def requires(self):
         output_dir = self.get_output_dir()
         if not self.is_postfit:
-            return CreateAsimovFitFirstStep.req(self, output_dir=output_dir)
+            config = self.get_input_config()
+            output_dir = self.get_output_dir()
+                
+            tasks = []
+            if self.variable in ["", "tuto"]:
+                cats = "r"
+            elif self.variable == "MH":
+                cats = "MH"
+            else:
+                cats = ",".join(combineVariableDict(self.variable, self.year)['paramStrNoOne'])
+            
+            impactConfig = config['combine_impacts']
+            
+            return AsimovFitCategoryFirstStep.req(
+                self, 
+                output_dir=output_dir, 
+                cats=cats, 
+                # workflow=impactConfig["execution"], 
+                # slurm_partition=impactConfig['batchPartition'], 
+                # slurm_memory=impactConfig['batchMemory'], 
+                # slurm_max_runtime=impactConfig['batchMaxRuntime'], 
+                # htcondor_partition=impactConfig['batchPartition'], 
+                # htcondor_memory=impactConfig['batchMemory'], 
+                # htcondor_max_runtime=impactConfig['batchMaxRuntime']
+                )
+                
+        else:
 
-        fit_config = self.get_input_config()["combine_fit"]
-        initial_task = (
-            UnblindedFitFirstStep
-        )
-        return initial_task.req(
-            self,
-            output_dir=output_dir,
-            # workflow=fit_config["execution"],
-            # slurm_partition=fit_config["batchPartition"],
-            # slurm_memory=fit_config["batchMemory"],
-            # slurm_max_runtime=fit_config["batchMaxRuntime"],
-            # htcondor_partition=fit_config["batchPartition"],
-            # htcondor_memory=fit_config["batchMemory"],
-            # htcondor_max_runtime=fit_config["batchMaxRuntime"],
-        )
+            fit_config = self.get_input_config()["combine_fit"]
+            return UnblindedFitFirstStep.req(
+                self,
+                output_dir=output_dir,
+                # workflow=fit_config["execution"],
+                # slurm_partition=fit_config["batchPartition"],
+                # slurm_memory=fit_config["batchMemory"],
+                # slurm_max_runtime=fit_config["batchMaxRuntime"],
+                # htcondor_partition=fit_config["batchPartition"],
+                # htcondor_memory=fit_config["batchMemory"],
+                # htcondor_max_runtime=fit_config["batchMaxRuntime"],
+            )
 
     def output(self):
         return self.input()
@@ -873,7 +868,7 @@ class FitCategoryFirstStep(Task):
 # optionally branching over a comma-separated list of categories. When
 # `cats` is set all bins are executed inside one HTCondor job to avoid
 # spawning one submission per differential bin.
-class FitCategoryScan(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow):
+class FitCategoryScan(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow):
     cat = law.Parameter(default="", description="Current category")
     cats = law.Parameter(default="", description="Comma separated list of categories to process")
     nPoints = law.Parameter(default=30, description="Number of points for the LL scan")
@@ -884,7 +879,9 @@ class FitCategoryScan(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow):
         description="Use observed data and post-fit snapshots instead of Asimov data",
     )
 
-    # def requires(self):
+    def requires(self):
+        return self.workflow_requires()
+    
     def workflow_requires(self):
         workflow_reqs = super().workflow_requires()
 
@@ -938,21 +935,13 @@ class FitCategoryScan(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow):
         
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
 
             
         mode_dir = 'dataFit' if self.is_postfit else 'asimov'
         scan_name = 'DataPostFitScanFit' if self.is_postfit else 'AsimovPostFitScanFit'
-        output = [os.path.join(
-            output_dir, 'Combine', self.outdir, fitFolderName, mode_dir,
-            current_dir, self.freeze,
-        )]
+        output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, mode_dir, current_dir, self.freeze if self.freeze else 'NoFreeze')]
         output += [os.path.join(
-            output_dir, 'Combine', self.outdir, fitFolderName, mode_dir,
-            current_dir, self.freeze,
+            output_dir, 'Combine', self.outdir, self.fitFolderName, mode_dir, current_dir, self.freeze if self.freeze else 'NoFreeze',
             f'higgsCombine{scan_name}_{self.cat}.POINTS.{current_point}.{current_point}.MultiDimFit.mH{HIGGS_MASS}.root',
         )]
         
@@ -986,288 +975,117 @@ class FitCategoryScan(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow):
                 mask_params.append(f"mask_{channel}={0 if keep else 1}")
 
         return ",".join(mask_params)
-
-    def _run_observed_scan_point(self, current_cat, current_point, current_dir):
-        """Run one observed scan point using the same branch layout as Asimov."""
-        config = self.get_input_config()
-        output_dir = self.get_output_dir()
-        fit_folder = (
-            'runFits_mu_fiducial' if self.variable == ''
-            else f'runFits_{self.variable}'
+    
+    def store_parts(self):
+        scan_id = law.util.create_hash(
+            (
+                self.year,
+                self.variable,
+                self.cat,
+                self.cats,
+                self.freeze,
+                self.is_postfit,
+                self.set_pdfidx_inclusives,
+            )
         )
-        scan_dir = os.path.join(
-            output_dir, 'Combine', self.outdir, fit_folder, 'dataFit',
-            current_dir, self.freeze,
+
+        return (
+            self.__class__.__name__,
+            self.version,
+            scan_id,
         )
-        os.makedirs(scan_dir, exist_ok=True)
-
-        stat_only = self.freeze == 'allConstrainedNuisances'
-        best_fit_kind = 'DataPostFitBestFit'
-        first_step = os.path.join(
-            output_dir, 'Combine', self.outdir, fit_folder, 'dataFit',
-            f'higgsCombine{best_fit_kind}_{current_cat}.MultiDimFit.mH{HIGGS_MASS}.root',
-        )
-        if not os.path.isfile(first_step):
-            raise RuntimeError(f"Required observed best-fit snapshot is missing: {first_step}")
-
-        frozen = ['r' if self.variable == 'MH' else 'MH']
-        if stat_only:
-            frozen.append('allConstrainedNuisances')
-
-        arguments = [
-            'combineTool.py',
-            '-M', 'MultiDimFit',
-            '-d', first_step,
-            '-m', f'{HIGGS_MASS}',
-            '-n', f'DataPostFitScanFit_{current_cat}.POINTS.{current_point}.{current_point}',
-            '--algo', 'grid',
-            '--points', str(int(self.nPoints)),
-            '--firstPoint', str(current_point),
-            '--lastPoint', str(current_point),
-            '-P', current_cat,
-            '--snapshotName', 'MultiDimFit',
-            '--floatOtherPOIs', '1',
-            '--alignEdges', '1',
-            '--saveWorkspace',
-            '--saveFitResult',
-            '--freezeParameters', ','.join(frozen),
-            '--cminDefaultMinimizerStrategy=0',
-            '--cminFallbackAlgo', 'Minuit2,Migrad,1:10',
-            '--X-rtd', 'MINIMIZER_freezeDisassociatedParams',
-            '--X-rtd', 'MINIMIZER_multiMin_hideConstants',
-            '--X-rtd', 'MINIMIZER_multiMin_maskConstraints',
-            '--X-rtd', 'MINIMIZER_multiMin_maskChannels=2',
-        ]
-        if self.variable == 'MH':
-            arguments += ['--redefineSignalPOIs', 'MH']
-        if self.freeze and not stat_only:
-            arguments += [
-                '--freezeNuisanceGroups', ','.join(self.freeze.split('_')),
-            ]
-        arguments.extend(_scan_parameter_range_args(config, current_cat))
-        if self.variable not in ('', 'tuto', 'MH'):
-            arguments.extend(_save_specified_index_args(
-                combineVariableDict(self.variable, self.year)['pdfIndeces']
-            ))
-
-        print(' '.join(arguments))
-        subprocess.run(arguments, cwd=scan_dir, check=True, text=True)
 
     def run(self):
         current_cat, current_point = self._current_branch_info()
-        current_dir = "_".join(current_cat.split(",")) if current_cat != self.cat else ""
-        if self.is_postfit:
-            return self._run_observed_scan_point(
-                current_cat, current_point, current_dir
-            )
-        
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
-                    
+        current_dir = ("_".join(current_cat.split(",")) if current_cat != self.cat else "")
+
         config = self.get_input_config()
-        output_dir = self.get_output_dir() 
-            
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
-            
-        cwd = os.getcwd()
-        scan_dir = os.path.join(
-            output_dir, "Combine", self.outdir, fitFolderName,
-            "asimov", current_dir, self.freeze,
-        )
+
+        scan_prefix = ("DataPostFitScanFit" if self.is_postfit else "AsimovPostFitScanFit")
+
+        scan_dir = os.path.join(self.input()['FitCategoryFirstStep']['collection'][0]['scan_folder'].path, current_dir, self.freeze if self.freeze else 'NoFreeze')
         os.makedirs(scan_dir, exist_ok=True)
-        os.chdir(scan_dir)
 
-        first_output = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov', self.freeze)
+        first_step = self.input()['FitCategoryFirstStep']['collection'][0]['first_step_root'].path
 
-        def check_pdf_idx(param):
-            # Run the ROOT command
-            command = f'root -l -q \'{os.environ["ANALYSIS_PATH"]}/Combine/checkPdfIdx.C("{first_output}/higgsCombinefirstStep_{param}.MultiDimFit.mH{HIGGS_MASS}.root")\''
-            
-            # Execute the command and capture the output
-            result = subprocess.run(command, shell=True, capture_output=True, text=True)
-            
-            # Get the output and check for errors
-            pdfIdx = result.stdout.strip()
-            
-            if result.returncode != 0:
-                print("Error executing the command:", result.stderr)
-                return None
-            
-            if pdfIdx.startswith("Processing"):
-                pdfIdx = pdfIdx.split('X', 1)[-1]  # Split on the first 'X'
-            
-            # Remove the last comma
-            pdfIdx = pdfIdx.rstrip(',')
+        if not os.path.isfile(first_step):
+            raise RuntimeError(f"Required first-step workspace is missing: {first_step}")
 
-            # Print the final result
-            print(pdfIdx)
-            return pdfIdx
+        frozen = ["r" if self.variable == "MH" else "MH"]
 
-        if self.variable != 'MH':
-            pdfIdx = check_pdf_idx(current_cat)
+        if self.freeze == "allConstrainedNuisances":
+            frozen.append("allConstrainedNuisances")
 
-        firstStepPath = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov', f"higgsCombinefirstStep_{self.cat}.MultiDimFit.mH{HIGGS_MASS}.root")
+        arguments = [
+            "combineTool.py",
+            "-M", "MultiDimFit",
+            "-d", first_step,
+            "-m", str(HIGGS_MASS),
+            "-n", f"{scan_prefix}_{self.cat}.POINTS.{current_point}.{current_point}",
+            "--algo", "grid",
+            "--points", str(int(self.nPoints)),
+            "--firstPoint", str(current_point),
+            "--lastPoint", str(current_point),
+            "-P", self.cat,
+            "--floatOtherPOIs", "1",
+            "--alignEdges", "1",
+            "--saveWorkspace",
+            "--saveFitResult",
+            "--freezeParameters", ",".join(frozen),
+            "--cminDefaultMinimizerStrategy=0",
+            "--cminFallbackAlgo", "Minuit2,Migrad,1:10",
+            "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
+            "--X-rtd", "MINIMIZER_multiMin_hideConstants",
+            "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
+            "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
+        ]
 
-        if self.variable in ['', 'tuto']:
-            arguments = [
-                "combine",
-                "-M", "MultiDimFit",
-                "-d", firstStepPath,
-                # "--snapshotName", "MultiDimFit",
-                "--freezeParameters", "MH",
-                "-m", f"{HIGGS_MASS}",
-                "-n", f"AsimovPostFitScanFit_{current_cat}.POINTS.{current_point}.{current_point}",
-                "--cminDefaultMinimizerStrategy=0",
-                "--cminFallbackAlgo", "Minuit2,Migrad,1:10",
-                "--algo", "grid",
-                "--points", f"{int(self.nPoints)}",
-                "--expectSignal", "1",
-                "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
-                "--X-rtd", "MINIMIZER_multiMin_hideConstants",
-                "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
-                "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
+        # Expected/Asimov dataset.
+        if not self.is_postfit:
+            arguments += [
                 "-t", "-1",
-                "-P", "r",
-                "--firstPoint", f"{current_point}",
-                "--lastPoint", f"{current_point}",
-                "--floatOtherPOIs", "1",
-                "--alignEdges", "1",
-                "--setParameterRanges", f"{config['combine_fit']['setParameterRange']}",
-                "--saveSpecifiedNuis", "all"
+                "--expectSignal", "1",
             ]
 
-            if convert_boolean_string(self.set_pdfidx_inclusives):
-                arguments.append("--setParameters")
-                arguments.append(f"""{pdfIdx}""")
-            else:
-                arguments.append("--setParameters")
-                arguments.append("r=1")
+        # Load the saved fit snapshot.
+        if self.is_postfit or self.variable != "":
+            arguments += ["--snapshotName", "MultiDimFit"]
 
-        elif self.variable == 'MH':
-            arguments = [
-                "combineTool.py",
-                "-M", "MultiDimFit",
-                "-d", firstStepPath,
-                "-m", f"{HIGGS_MASS}",
-                "-n", f"AsimovPostFitScanFit_{self.cat}.POINTS.{current_point}.{current_point}",
-                "--cminDefaultMinimizerStrategy=0",
-                "--algo", "grid",
-                "--points", f"{int(self.nPoints)}",
-                "--expectSignal", "1",
-                "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
-                "--X-rtd", "MINIMIZER_multiMin_hideConstants",
-                "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
-                "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
-                "-t", "-1",
-                "-P", f"{self.cat}",
-                "--firstPoint", f"{current_point}",
-                "--lastPoint", f"{current_point}",
-                "--saveFitResult",
-                "--floatOtherPOIs", "1",
-                "--alignEdges", "1",
-                "--snapshotName", "MultiDimFit",
-                "--setParameterRanges", f"{config['combine_fit']['setParameterRange']}",
-            ]   
+        if self.variable == "MH":
+            arguments += [
+                "--redefineSignalPOIs", "MH",
+                "--setParameters", "r=1",
+            ]
 
-            freezeParameters = "r"
-            # freeze all syst
-            if self.freeze == "allConstrainedNuisances":
-                freezeParameters = f"{freezeParameters},allConstrainedNuisances"
-            # freeze nuisance group defined in the datacard.txt
-            elif self.freeze != "":
-                arguments.extend(["--freezeNuisanceGroups", ",".join(self.freeze.split("_"))])
+            if self.cats:
+                arguments[-1] += "," + self.make_channel_mask_params(self.cats)
 
-            arguments.extend(["--freezeParameters", freezeParameters])
-
-            setParameters = "r=1.0"
-            # mask channels/cats
-            if self.cats != "":
-                mask = self.make_channel_mask_params(self.cats)
-                setParameters = f"{setParameters},{mask}"
-            arguments.extend(["--setParameters", setParameters])
-
-
-                
-
-            if current_dir != current_cat:
-                pass
+        elif self.variable in ("", "tuto"):
+            arguments += ["--setParameters", "r=1"]
 
         else:
-            pdf_indices = combineVariableDict(self.variable, self.year)['pdfIndeces']
-            cache_key = (datacard_path,)
-            if cache_key not in _PDFINDEX_CACHE and os.path.exists(datacard_path):
-                datacard_pdf_indices = extract_pdf_indices(datacard_path)
-                if datacard_pdf_indices:
-                    _PDFINDEX_CACHE[cache_key] = datacard_pdf_indices
-            if cache_key in _PDFINDEX_CACHE:
-                pdf_indices = _PDFINDEX_CACHE[cache_key]
-            paramStr = ",".join(combineVariableDict(self.variable, self.year)['paramStr'])
-            set_param_string = paramStr
-            if pdfIdx:
-                set_param_string = f"{set_param_string},{pdfIdx}"
+            set_parameters = ",".join(combineVariableDict(self.variable, self.year)["paramStr"])
+            arguments += ["--setParameters", set_parameters]
 
-            arguments = [
-                "combineTool.py",
-                "-M", "MultiDimFit",
-                "-d", firstStepPath,
-                "-m", f"{HIGGS_MASS}",
-                "-n", f"AsimovPostFitScanFit_{current_cat}.POINTS.{current_point}.{current_point}",
-                "--cminDefaultMinimizerStrategy=0",
-                "--cminFallbackAlgo", "Minuit2,Migrad,1:10",
-                "--algo", "grid",
-                "--points", f"{int(self.nPoints)}",
-                "--expectSignal", "1",
-                "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
-                "--X-rtd", "MINIMIZER_multiMin_hideConstants",
-                "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
-                "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
-                "-t", "-1",
-                "-P", f"{current_cat}",
-                "--firstPoint", f"{current_point}",
-                "--lastPoint", f"{current_point}",
-                "--saveFitResult",
-                "--floatOtherPOIs", "1",
-                "--alignEdges", "1",
-                "--snapshotName", "MultiDimFit",
-                "--setParameters", set_param_string,
-            ]
-            if self.freeze == "allConstrainedNuisances":
-                arguments.extend(["--freezeParameters", "MH,allConstrainedNuisances"])
-            elif self.freeze != "":
-                arguments.extend(["--freezeParameters", "MH"])
-                arguments.extend(["--freezeNuisanceGroups", self.freeze])
-            else:
-                arguments.extend(["--freezeParameters", "MH"])
-
-            arguments.extend(_scan_parameter_range_args(config, current_cat))
+            pdf_indices = combineVariableDict(self.variable, self.year)["pdfIndeces"]
             arguments.extend(_save_specified_index_args(pdf_indices))
-        command = arguments
-        print(' '.join(command))
-        try:
-            result = subprocess.run(command, check=True, text=True, capture_output=True)
-            print("Script output:", result.stdout)
-            print("Script executed successfully.")
-        except subprocess.CalledProcessError as e:
-            print("Error executing script:", e.stderr)
-            raise
-            
-        os.chdir(cwd)
+
+        if self.freeze and self.freeze != "allConstrainedNuisances":
+            arguments += ["--freezeNuisanceGroups", ",".join(self.freeze.split("_"))]
+
+        arguments.extend(_scan_parameter_range_args(config, current_cat))
+
+        print(" ".join(arguments))
+        subprocess.run(arguments, cwd=scan_dir, check=True, text=True)
         
         
-class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow):
+class CreateFit(CombineMultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow):
 
     group = law.Parameter(default="Syst,Stat")
     set_pdfidx_inclusives = law.Parameter(default=False)
     cats = law.Parameter(default="")
     is_postfit = luigi.BoolParameter(default=False)
 
-    def _fit_folder_name(self):
-        return "runFits_mu_fiducial" if self.variable == "" else f"runFits_{self.variable}"
 
     def _pois(self):
         if self.variable in ("", "tuto"):
@@ -1361,34 +1179,18 @@ class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
         output_dir = self.get_output_dir()
         current_dir = "_".join(self.cats.split(","))
 
-        if self.variable == "":
-            fitFolderName = "runFits_mu_fiducial"
-        else:
-            fitFolderName = f"runFits_{self.variable}"
 
 
         mode_dir = "dataFit" if self.is_postfit else "asimov"
-        base_dir = os.path.join(
-            output_dir,
-            "Combine",
-            self.outdir,
-            fitFolderName,
-            mode_dir,
-        )
+        base_dir = os.path.join(output_dir, "Combine", self.outdir, self.fitFolderName, mode_dir)
 
-        scan_dir = os.path.join(
-            base_dir,
-            "scans",
-            current_dir,
+        scan_dir = os.path.join(base_dir, "scans", current_dir,
         )
 
         if self.variable in ["", "tuto", "MH"]:
             pois = ["MH"] if self.variable == "MH" else ["r"]
         else:
-            pois = combineVariableDict(
-                self.variable,
-                self.year,
-            )["paramStrNoOne"]
+            pois = combineVariableDict(self.variable, self.year)["paramStrNoOne"]
 
         outputs = {
             "scan_dir": law.LocalDirectoryTarget(scan_dir),
@@ -1399,7 +1201,6 @@ class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
         groups = self.group.split(",")
 
         for i, syst in enumerate(groups):
-
             if i == len(groups) - 1:
                 freeze = "allConstrainedNuisances"
             else:
@@ -1416,30 +1217,17 @@ class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
             outputs["scans"][scan_type] = {}
 
             for poi in pois:
-                path = os.path.join(
-                    base_dir,
-                    current_dir,
-                    freeze,
-                    f"higgsCombine{'Data' if self.is_postfit else 'Asimov'}PostFitScanFit_{poi}.root",
-                )
-
-                outputs["scans"][scan_type][poi] = \
-                    law.LocalFileTarget(path)
+                path = os.path.join(base_dir, current_dir, freeze if freeze else 'NoFreeze', f"higgsCombine{'Data' if self.is_postfit else 'Asimov'}PostFitScanFit_{poi}.root")
+                outputs["scans"][scan_type][poi] = law.LocalFileTarget(path)
 
         # plot outputs are produced only once
         group_name = "_".join(groups)
 
         for poi in pois:
             outputs["plots"][poi] = {}
-
             for ext in ("root", "pdf", "png"):
-                path = os.path.join(
-                    scan_dir,
-                    f"scan_{poi}_{group_name}.{ext}",
-                )
-
-                outputs["plots"][poi][ext] = \
-                    law.LocalFileTarget(path)
+                path = os.path.join(scan_dir, f"scan_{poi}_{group_name}.{ext}")
+                outputs["plots"][poi][ext] = law.LocalFileTarget(path)
 
         return outputs
 
@@ -1447,14 +1235,10 @@ class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
         """Aggregate and plot observed scan points in the common layout."""
         config = self.get_input_config()
         output_dir = self.get_output_dir()
-        fit_folder = (
-            'runFits_mu_fiducial' if self.variable == ''
-            else f'runFits_{self.variable}'
-        )
+        fit_folder = 'runFits_mu_fiducial' if self.variable == '' else f'runFits_{self.variable}'
+        
         current_dir = '_'.join(self.cats.split(','))
-        base_dir = os.path.join(
-            output_dir, 'Combine', self.outdir, fit_folder, 'dataFit'
-        )
+        base_dir = os.path.join(output_dir, 'Combine', self.outdir, fit_folder, 'dataFit')
         scan_dir = os.path.join(base_dir, 'scans', current_dir)
         os.makedirs(scan_dir, exist_ok=True)
 
@@ -1495,7 +1279,7 @@ class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
                 )
 
             total_scan = os.path.join(
-                base_dir, current_dir, freeze_list[0],
+                base_dir, current_dir, freeze_list[0] if freeze_list[0] else 'NoFreeze',
                 f'higgsCombineDataPostFitScanFit_{poi}.root',
             )
             arguments = [
@@ -1530,19 +1314,18 @@ class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
         if self.is_postfit:
             return self._run_observed()
 
-        fitFolderName = self._fit_folder_name()
         config = self.get_input_config()
         output_dir = self.get_output_dir()
         current_dir = "_".join(self.cats.split(","))
 
         cwd = os.getcwd()
         scan_dir = os.path.join(
-            output_dir, "Combine", self.outdir, fitFolderName,
+            output_dir, "Combine", self.outdir, self.fitFolderName,
             "asimov", "scans", current_dir,
         )
         os.makedirs(scan_dir, exist_ok=True)
         os.chdir(os.path.join(
-            output_dir, "Combine", self.outdir, fitFolderName,
+            output_dir, "Combine", self.outdir, self.fitFolderName,
             "asimov", current_dir,
         ))
 
@@ -1550,12 +1333,13 @@ class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
             freeze_list = self._freeze_scenarios()
             # hadd the files for each category and freeze combination
             for freeze in freeze_list:
+                freeze = freeze if freeze else 'NoFreeze'
                 arguments = [
                     "hadd", "-f",
-                    f"{os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')}"
+                    f"{os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')}"
                 ]
                 for i in range(self._n_points(config)):
-                    arguments.append(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.POINTS.{i}.{i}.MultiDimFit.mH{HIGGS_MASS}.root'))
+                    arguments.append(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.POINTS.{i}.{i}.MultiDimFit.mH{HIGGS_MASS}.root'))
                 command = arguments
                 # print(command)
                 try:
@@ -1575,7 +1359,7 @@ class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
                 # f"{os.environ['CMSSW_BASE']}/bin/{os.environ['SCRAM_ARCH']}/plot1DScan.py",
                 os.path.join(os.environ["ANALYSIS_PATH"],"Plots/plot1DScan.py"),
                 # "plot1DScan.py",
-                os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov', current_dir, freeze_list[0], f'higgsCombineAsimovPostFitScanFit_{cat}.root'),
+                os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'asimov', current_dir, freeze_list[0] if freeze_list[0] else 'NoFreeze', f'higgsCombineAsimovPostFitScanFit_{cat}.root'),
                 "-o", f'scan_{cat}_{"_".join(self.group.split(","))}',
                 "--POI", f"{cat}",
                 "--main-label", "Expected",
@@ -1586,7 +1370,7 @@ class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
                 "--others", 
             ]
 
-            arguments += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')+f":{'Stat only' if freeze=='allConstrainedNuisances' else 'freeze '+'+'.join(freeze.split('_'))}:{i+2}" for i, (freeze, name) in enumerate(zip(freeze_list[1:], self.group.split(',')[1:]))]
+            arguments += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'asimov', current_dir, freeze, f'higgsCombineAsimovPostFitScanFit_{cat}.root')+f":{'Stat only' if freeze=='allConstrainedNuisances' else 'freeze '+'+'.join(freeze.split('_'))}:{i+2}" for i, (freeze, name) in enumerate(zip(freeze_list[1:], self.group.split(',')[1:]))]
 
             command = arguments
             print(' '.join(command))
@@ -1600,10 +1384,11 @@ class CreateFit(MultiYearTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
         os.chdir(cwd)
 
 
-class CreateLikelihoodFitWrapper(MultiYearTask):
+class CreateLikelihoodFitWrapper(CombineMultiYearTask):
 
     set_pdfidx_inclusives = law.Parameter(default=False)
     do_per_cat = luigi.BoolParameter(default=False, description="Run per-category fits instead of inclusive fits")
+    do_splitting = luigi.BoolParameter(default=False, description="Do splitting the group list for per-category fits, only use the first group")
     is_postfit = luigi.BoolParameter(default=False)
 
     
@@ -1621,7 +1406,6 @@ class CreateLikelihoodFitWrapper(MultiYearTask):
 
         tasks = {
             "inclusive": {},
-            "categories": {},
         }
 
         # Inclusive fits: preserve all configured groups
@@ -1642,24 +1426,28 @@ class CreateLikelihoodFitWrapper(MultiYearTask):
         if self.do_per_cat:
             # Per-category fits only need the first group,
             # matching your previous behavior.
-            group = groups[0]
+            if not self.do_splitting:
+                groups = groups[0:1]
 
-            for cat in self.get_cats().split(","):
-                cat = cat.strip()
+            for group in groups:
+                label = group.replace(",", "_")
+                for cat in self.get_cats().split(","):
+                    cat = cat.strip()
+                    tasks.setdefault(cat, {})
 
-                if not cat:
-                    continue
+                    if not cat:
+                        continue
 
-                tasks["categories"][cat] = CreateFit.req(
-                    self,
-                    years=self.years,
-                    output_dir=output_dir,
-                    group=group,
-                    set_pdfidx_inclusives=self.set_pdfidx_inclusives,
-                    workflow=self.batch_flavor,
-                    cats=cat,
-                    is_postfit=self.is_postfit,
-                )
+                    tasks[cat][label] = CreateFit.req(
+                        self,
+                        years=self.years,
+                        output_dir=output_dir,
+                        group=group,
+                        set_pdfidx_inclusives=self.set_pdfidx_inclusives,
+                        workflow=self.batch_flavor,
+                        cats=cat,
+                        is_postfit=self.is_postfit,
+                    )
 
         return tasks
 
@@ -1670,7 +1458,7 @@ class CreateLikelihoodFitWrapper(MultiYearTask):
         return True
 
 
-class CreateFitPerCat(MultiYearTask):
+class CreateFitPerCat(CombineMultiYearTask):
     include_stat_error = luigi.BoolParameter(default=True, description="Include stat-only scan inputs and print stat/syst breakdown")
     show_values = luigi.BoolParameter(default=True, description="Draw numerical fit values on each summary row")
     is_per_year = luigi.BoolParameter(default=False, description="Show per year breakdown in the summary plot")
@@ -1946,7 +1734,7 @@ class CreateFitPerCat(MultiYearTask):
             os.chdir(cwd)
 
 
-class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovImpactFirstStep(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
     # def requires(self):
     def workflow_requires(self):
@@ -1963,7 +1751,7 @@ class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
         impactConfig = config["combine_impacts"]    
         
         tasks["RunT2WS"] = RunText2Workspace.req(self, output_dir=output_dir, years=self.year)
-        tasks["CreateAsimovFitFirstStep"] = CreateAsimovFitFirstStep.req(self, output_dir=output_dir, )
+        tasks["CreateAsimovFitFirstStep"] = FitCategoryFirstStep.req(self, output_dir=output_dir, )
         
         return tasks
 
@@ -1975,16 +1763,12 @@ class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
 
             
-        # output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName)]
-        output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact')]
+        # output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName)]
+        output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact')]
 
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', f'higgsCombine_initialFit_Test.MultiDimFit.mH{HIGGS_MASS}.root')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', f'higgsCombine_initialFit_Test.MultiDimFit.mH{HIGGS_MASS}.root')]
         
         outputFileTargets = []
                 
@@ -1997,25 +1781,14 @@ class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
 
     def run(self):
        
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-            
-        else:
-            fitFolderName = f'runFits_{self.variable}'
-                  
         config = self.get_input_config()
         output_dir = self.get_output_dir()
-            
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
         
         cwd = os.getcwd()
-        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/impact'], shell=True)
-        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact'))
+        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/impact'], shell=True)
+        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact'))
 
-        first_output = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov')
+        first_output = os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'asimov')
         if self.variable in ['', 'tuto']:
             pdf_idx_param = "r"
         elif self.variable == "MH":
@@ -2038,7 +1811,7 @@ class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
 
         pdfIdx = None
         first_step_path = os.path.join(first_output, f"higgsCombinefirstStep_{pdf_idx_param}.MultiDimFit.mH{HIGGS_MASS}.root")
-        if os.path.exists(first_step_path):
+        if self.variable != "MH" and os.path.exists(first_step_path):
             pdfIdx = check_pdf_idx(pdf_idx_param)
         else:
             print(f"First-step file not found for PDF index extraction: {first_step_path}")
@@ -2050,7 +1823,7 @@ class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             arguments = [
                 "combineTool.py",
                 "-M", "Impacts",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--doInitialFit",
                 "--robustFit", "1",
                 "--freezeParameters", "MH",
@@ -2073,20 +1846,20 @@ class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
                 print("Error executing script:", e.stderr)
 
         elif self.variable in ["MH"]:
-                    set_param_string = f"r=1,MH={HIGGS_MASS}"
-                    if pdfIdx:
-                        set_param_string = f"{set_param_string},{pdfIdx}"
-                    arguments = [
-                        "combineTool.py",
-                        "-M", "Impacts",
-                        "-d", datacard_path,
-                        "--doInitialFit",
-                        "--robustFit", "1",
-                        "--freezeParameters", "r",
-                        "--redefineSignalPOIs", "MH",
-                        "-m", f"{HIGGS_MASS}",
-                        "--cminDefaultMinimizerStrategy=0",
-                        "--cminFallbackAlgo", "Minuit2,Migrad,1:10",
+            set_param_string = f"r=1,MH={HIGGS_MASS}"
+            if pdfIdx:
+                set_param_string = f"{set_param_string},{pdfIdx}"
+            arguments = [
+                "combineTool.py",
+                "-M", "Impacts",
+                "-d", self.datacard_path,
+                "--doInitialFit",
+                "--robustFit", "1",
+                "--freezeParameters", "r",
+                "--redefineSignalPOIs", "MH",
+                "-m", f"{HIGGS_MASS}",
+                "--cminDefaultMinimizerStrategy=0",
+                "--cminFallbackAlgo", "Minuit2,Migrad,1:10",
                 "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
                         "--X-rtd", "MINIMIZER_multiMin_hideConstants",
                         "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
@@ -2095,14 +1868,14 @@ class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
                         "--setParameters", f"{set_param_string}",
                         "--setParameterRanges", "MH=123,127"
                     ]
-                    command = arguments
-                    print('AsimovImpactFirstStep: ' + ' '.join(command))
-                    try:
-                        result = subprocess.run(command, check=True, text=True, capture_output=True)
-                        print("Script output:", result.stdout)
-                        print("Script executed successfully.")
-                    except subprocess.CalledProcessError as e:
-                        print("Error executing script:", e.stderr)
+            command = arguments
+            print('AsimovImpactFirstStep: ' + ' '.join(command))
+            try:
+                result = subprocess.run(command, check=True, text=True, capture_output=True)
+                print("Script output:", result.stdout)
+                print("Script executed successfully.")
+            except subprocess.CalledProcessError as e:
+                print("Error executing script:", e.stderr)
         else:
             set_param_string = ",".join(combineVariableDict(self.variable, self.year)['paramStr'])
             if pdfIdx:
@@ -2110,7 +1883,7 @@ class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--algo", "singles",
                 "--redefineSignalPOIs", f"""{",".join(combineVariableDict(self.variable, self.year)['paramStrNoOne'])}""",
                 "--freezeParameters", "MH",
@@ -2136,7 +1909,7 @@ class AsimovImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
     
         os.chdir(cwd)
         
-class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovImpactSecondStep(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
     # def requires(self):
     def workflow_requires(self):
@@ -2172,10 +1945,8 @@ class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWor
         output_dir = self.get_output_dir() 
 
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
+        
     
         # IMPORTANT:
         # For differential impacts we only want *constrained nuisance parameters* (i.e. those listed in
@@ -2244,8 +2015,11 @@ class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWor
         exclude_expr = ""
         if "combine_impacts" in config:
             exclude_expr = config["combine_impacts"].get("exclude", "")
-        paramList = list_nuisance_parameters(datacard_path, "w", "ModelConfig", poiList, exclude_expr=exclude_expr)
 
+        if os.path.exists(self.datacard_path):
+            paramList = list_nuisance_parameters(self.datacard_path, "w", "ModelConfig", poiList, exclude_expr=exclude_expr)
+        else:
+            paramList = ["dummy_param"]
         
         branch_map = {i: current_param for i, current_param in enumerate(paramList)}
         return branch_map
@@ -2256,15 +2030,11 @@ class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWor
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
             
-        # output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName)]
-        output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact')]
+        # output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName)]
+        output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact')]
 
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', f'higgsCombine_paramFit_Test_{current_param}.MultiDimFit.mH{HIGGS_MASS}.root')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', f'higgsCombine_paramFit_Test_{current_param}.MultiDimFit.mH{HIGGS_MASS}.root')]
         
         outputFileTargets = []
                 
@@ -2278,25 +2048,16 @@ class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWor
     def run(self):
         current_param = self.branch_data
        
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-            
-        else:
-            fitFolderName = f'runFits_{self.variable}'
+
                   
         config = self.get_input_config()
-        output_dir = self.get_output_dir() 
-            
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+        output_dir = self.get_output_dir()             
         
         cwd = os.getcwd()
-        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/impact'], shell=True)
-        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact'))
+        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/impact'], shell=True)
+        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact'))
 
-        first_output = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov')
+        first_output = os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'asimov')
         if self.variable in ['', 'tuto']:
             pdf_idx_param = "r"
         elif self.variable == "MH":
@@ -2332,7 +2093,7 @@ class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWor
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--algo", "impact",
                 "--redefineSignalPOIs", "r",
                 "--freezeParameters", "MH",
@@ -2359,7 +2120,7 @@ class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWor
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--algo", "impact",
                 "--redefineSignalPOIs", "MH",
                 "--freezeParameters", "r",
@@ -2386,7 +2147,7 @@ class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWor
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--algo", "impact",
                 "--redefineSignalPOIs", f"""{",".join(combineVariableDict(self.variable, self.year)['paramStrNoOne'])}""",
                 "--freezeParameters", "MH",
@@ -2418,7 +2179,7 @@ class AsimovImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWor
         
         os.chdir(cwd)
         
-class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovImpactThirdStep(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
     
     # def requires(self):
     def workflow_requires(self):
@@ -2460,26 +2221,22 @@ class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
 
 
         output = []
         if self.variable in ['', 'tuto', 'MH']:
             cat = "r"
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'impacts')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'impacts', f'impacts.pdf')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'impacts')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'impacts', f'impacts.pdf')]
             if self.variable != 'MH':
-                output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'impacts', 'impacts_corrected_dropBkgModelParams.json')]
+                output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'impacts', 'impacts_corrected_dropBkgModelParams.json')]
             
         else:
             for cat in combineVariableDict(self.variable, self.year)['paramStrNoOne']:
-                output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'impacts')]
-                output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'impacts', f'impacts_{cat}.pdf')]
+                output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'impacts')]
+                output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'impacts', f'impacts_{cat}.pdf')]
                 
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'impacts', f'impacts.json')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'impacts', f'impacts.json')]
         
         outputFileTargets = []
                 
@@ -2491,51 +2248,19 @@ class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
         return outputFileTargets
 
     def run(self):
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-            
-        else:
-            fitFolderName = f'runFits_{self.variable}'
+
                   
         config = self.get_input_config()
         output_dir = self.get_output_dir() 
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
 
-        cwd = os.getcwd()
-        if self.batch_flavor == "slurm/psi":
-            # Have to use /scratch/batch_username/ for slurm/psi
-            if "/work" in output_dir:
-                execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/impact/impacts'], shell=True)
-            else:   
-                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/impact/impacts'], shell=True)
 
-            os.environ["TARGET_PATH"] = f"/scratch/{os.environ['USER']}/{os.environ['SLURM_JOB_ID']}"
-            execute_command([f'mkdir -p $TARGET_PATH/Combine/{self.outdir}/{fitFolderName}/impact/impacts'], shell=True)
-            if "/work" in output_dir:
-                slurm_copy_command = [
-                    'cp', '-rf',
-                    f'{output_dir}/Combine/{self.outdir}/{fitFolderName}/impact',
-                    f'{os.environ["TARGET_PATH"]}/Combine/{self.outdir}/{fitFolderName}'
-                ]
-            else:
-                slurm_copy_command = [
-                    'xrdcp', '-rf',
-                    'root://t3dcachedb03.psi.ch:1094//'+ f'{output_dir}/Combine/{self.outdir}/{fitFolderName}/impact',
-                    f'{os.environ["TARGET_PATH"]}/Combine/{self.outdir}/{fitFolderName}'
-                ]
-            execute_command(slurm_copy_command)
-            os.chdir(os.path.join(os.environ["TARGET_PATH"], 'Combine', self.outdir, fitFolderName, 'impact'))
-            temp_output_dir = os.environ["TARGET_PATH"]
-        else:
-            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/impact/impacts'], shell=True)
-            os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact'))
-            temp_output_dir = output_dir
+        cwd = os.getcwd()         
+        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/impact/impacts'], shell=True)
+        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact'))
+        temp_output_dir = output_dir
 
-        first_output = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'asimov')
+        first_output = os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'asimov')
         if self.variable in ['', 'tuto']:
             pdf_idx_param = "r"
             base_param_string = "r=1"
@@ -2561,7 +2286,7 @@ class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
 
         pdfIdx = None
         first_step_path = os.path.join(first_output, f"higgsCombinefirstStep_{pdf_idx_param}.MultiDimFit.mH{HIGGS_MASS}.root")
-        if os.path.exists(first_step_path):
+        if self.variable != "MH" and os.path.exists(first_step_path):
             pdfIdx = check_pdf_idx(pdf_idx_param)
         else:
             print(f"First-step file not found for PDF index extraction: {first_step_path}")
@@ -2572,13 +2297,13 @@ class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
 
         if self.variable in ['', 'tuto']:
             exclude_expr = config.get("combine_impacts", {}).get("exclude", "")
-            named_params = _list_modelconfig_nuisances(datacard_path, ["r"], exclude_expr=exclude_expr)
+            named_params = _list_modelconfig_nuisances(self.datacard_path, ["r"], exclude_expr=exclude_expr)
             if not named_params:
-                raise RuntimeError(f"No nuisance parameters found for impacts in {datacard_path}")
+                raise RuntimeError(f"No nuisance parameters found for impacts in {self.datacard_path}")
             arguments = [
                 "combineTool.py",
                 "-M", "Impacts",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--freezeParameters", "MH",
                 "-m", f"{HIGGS_MASS}",
                 "-o", "impacts/impacts.json",
@@ -2599,7 +2324,7 @@ class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             arguments = [
                 "python3",
                 f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'correctImpacts.py')}",
-                "--impactsJson", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'impacts', 'impacts.json')}",
+                "--impactsJson", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'impacts', 'impacts.json')}",
                 "--frozenParam", "MH",
                 "--dropBkgModelParams"
             ]
@@ -2630,13 +2355,13 @@ class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
 
         elif self.variable in ['MH']:
             exclude_expr = config.get("combine_impacts", {}).get("exclude", "")
-            named_params = _list_modelconfig_nuisances(datacard_path, ["r"], exclude_expr=exclude_expr)
+            named_params = _list_modelconfig_nuisances(self.datacard_path, ["r"], exclude_expr=exclude_expr)
             if not named_params:
-                raise RuntimeError(f"No nuisance parameters found for impacts in {datacard_path}")
+                raise RuntimeError(f"No nuisance parameters found for impacts in {self.datacard_path}")
             arguments = [
                 "combineTool.py",
                 "-M", "Impacts",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "-m", f"{HIGGS_MASS}",
                 "--redefineSignalPOIs", "MH",
                 "--freezeParameters", "r",
@@ -2676,7 +2401,7 @@ class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             arguments = [
                 "combineTool.py",
                 "-M", "Impacts",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--freezeParameters", "MH",
                 "-m", f"{HIGGS_MASS}",
                 "-o", "impacts/impacts.json",
@@ -2687,7 +2412,7 @@ class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             # providing the parameter list via --named.
             exclude_expr = config.get("combine_impacts", {}).get("exclude", "")
             poi_list = combineVariableDict(self.variable, self.year)["paramStrNoOne"]
-            named_params = _list_modelconfig_nuisances(datacard_path, poi_list, exclude_expr=exclude_expr)
+            named_params = _list_modelconfig_nuisances(self.datacard_path, poi_list, exclude_expr=exclude_expr)
             if not named_params:
                 raise RuntimeError(
                     f"No nuisance parameters found for impacts (variable={self.variable}, year={self.year}). "
@@ -2749,7 +2474,7 @@ class AsimovImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
         os.chdir(cwd)
 
 
-class AsimovCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovCovCorrHesse(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
     # def requires(self):
     def workflow_requires(self):
@@ -2786,21 +2511,17 @@ class AsimovCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
             
         if self.variable == "":
             output = []
         else:
-            # output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName)]
-            output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse')]
+            # output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName)]
+            output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse')]
             
             
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', f'robustHessefirstStep.root')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', f'multidimfitfirstStep.root')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', f'higgsCombinefirstStep.MultiDimFit.mH{HIGGS_MASS}.root')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', f'robustHessefirstStep.root')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', f'multidimfitfirstStep.root')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', f'higgsCombinefirstStep.MultiDimFit.mH{HIGGS_MASS}.root')]
         
         outputFileTargets = []
                 
@@ -2817,40 +2538,24 @@ class AsimovCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
             print("Running AsimovCovCorrHesse for inclusive does not make sense. Please specify a variable.")
             exit(1)
             
-        else:
-            fitFolderName = f'runFits_{self.variable}'
                   
         config = self.get_input_config()
         output_dir = self.get_output_dir() 
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
         
         cwd = os.getcwd()
         
-        if self.batch_flavor == "slurm/psi":
-            # Have to use /scratch/batch_username/ for slurm/psi
-            if "/work" in output_dir:
-                execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse'], shell=True)
-            else:   
-                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse'], shell=True)
-
-            os.environ["TARGET_PATH"] = f"/scratch/{os.environ['USER']}/{os.environ['SLURM_JOB_ID']}"
-            execute_command([f'mkdir -p $TARGET_PATH/Combine/{self.outdir}/{fitFolderName}/hesse'], shell=True)
-            os.chdir(os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'hesse'))
-        else:
-            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse'], shell=True)
-            os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse'))
+        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse'], shell=True)
+        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse'))
 
         # Determine which discrete pdfindex categories actually exist in the workspace.
         # This is important when some bins use merged categories (e.g. *_catMerged_*)
         # and therefore do not define the usual *_cat0/cat1/cat2_* RooCategories.
         pdf_indices = combineVariableDict(self.variable, self.year)['pdfIndeces']
-        cache_key = (datacard_path,)
-        if cache_key not in _PDFINDEX_CACHE and os.path.exists(datacard_path):
-            datacard_pdf_indices = extract_pdf_indices(datacard_path)
+        cache_key = (self.datacard_path,)
+        if cache_key not in _PDFINDEX_CACHE and os.path.exists(self.datacard_path):
+            datacard_pdf_indices = extract_pdf_indices(self.datacard_path)
             if datacard_pdf_indices:
                 _PDFINDEX_CACHE[cache_key] = datacard_pdf_indices
         if cache_key in _PDFINDEX_CACHE:
@@ -2858,7 +2563,7 @@ class AsimovCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
         arguments = [
             "combine",
             "-M", "MultiDimFit",
-            datacard_path,
+            self.datacard_path,
             "--freezeParameters", "MH",
             "-m", f"{HIGGS_MASS}",
             "-n", "firstStep",
@@ -2910,7 +2615,7 @@ class AsimovCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflo
             
         os.chdir(cwd)
         
-class AsimovCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class AsimovCovCorr(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
     noPreliminary = law.Parameter(default=False, description="Flag, if final plot should bear the Preliminary.")
 
 
@@ -2947,18 +2652,14 @@ class AsimovCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
             
-        # output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName)]
-        output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots')]
+        # output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName)]
+        output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots')]
 
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', f'corrMatrix_{self.variable}_syst.pdf')]
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', f'corrMatrix_{self.variable}_syst.png')]
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', f'covMatrix_{self.variable}_syst.pdf')]
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', f'covMatrix_{self.variable}_syst.png')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', f'corrMatrix_{self.variable}_syst.pdf')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', f'corrMatrix_{self.variable}_syst.png')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', f'covMatrix_{self.variable}_syst.pdf')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', f'covMatrix_{self.variable}_syst.png')]
         
         outputFileTargets = []
                 
@@ -2975,46 +2676,41 @@ class AsimovCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #
             # Does not make sense inclusively
             return True
             
-        else:
-            fitFolderName = f'runFits_{self.variable}'
                   
         config = self.get_input_config()
         output_dir = self.get_output_dir() 
             
-        # if self.variable == '':
-        #     datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        # else:
-        #     datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
         
         if self.batch_flavor == "slurm/psi":
             # Have to use /scratch/batch_username/ for slurm/psi
             if "/work" in output_dir:
-                execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse/Plots'], shell=True)
+                execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse/Plots'], shell=True)
             else:   
-                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse/Plots'], shell=True)
+                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse/Plots'], shell=True)
 
             os.environ["TARGET_PATH"] = f"/scratch/{os.environ['USER']}/{os.environ['SLURM_JOB_ID']}"
-            execute_command([f'mkdir -p $TARGET_PATH/Combine/{self.outdir}/{fitFolderName}/hesse/Plots'], shell=True)
+            execute_command([f'mkdir -p $TARGET_PATH/Combine/{self.outdir}/{self.fitFolderName}/hesse/Plots'], shell=True)
 
             if "/work" in output_dir:
                 slurm_copy_command = [
                     'cp', '-rf',
-                    f'{output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse',
-                    f'{os.environ["TARGET_PATH"]}/Combine/{self.outdir}/{fitFolderName}/'
+                    f'{output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse',
+                    f'{os.environ["TARGET_PATH"]}/Combine/{self.outdir}/{self.fitFolderName}/'
                 ]
             else:
                 slurm_copy_command = [
                     'xrdcp', '-rf',
-                    'root://t3dcachedb03.psi.ch:1094//'+ f'{output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse',
-                    f'{os.environ["TARGET_PATH"]}/Combine/{self.outdir}/{fitFolderName}/'
+                    'root://t3dcachedb03.psi.ch:1094//'+ f'{output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse',
+                    f'{os.environ["TARGET_PATH"]}/Combine/{self.outdir}/{self.fitFolderName}/'
                 ]
             execute_command(slurm_copy_command)
             temp_output_dir = os.environ["TARGET_PATH"]
-            # output_dir = os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'hesse', 'Plots')
+            # output_dir = os.path.join(os.environ["TARGET_PATH"], 'Combine', self.fitFolderName, 'hesse', 'Plots')
         else:
-            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse/Plots'], shell=True)
+            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse/Plots'], shell=True)
             temp_output_dir = output_dir
-            # output_dir = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots')            
+            # output_dir = os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots')            
         
         cwd = os.getcwd()
         os.chdir(os.path.join(os.environ["ANALYSIS_PATH"], 'Plots'))
@@ -3024,8 +2720,8 @@ class AsimovCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #
             f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'makeCorrMatrix.py')}",
             "--inputJson", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'inputs_robustHesse.json')}",
             "--mode", f"{self.variable}",
-            "--input", f"{os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', f'robustHessefirstStep.root')}",
-            "--output", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots')}",
+            "--input", f"{os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', f'robustHessefirstStep.root')}",
+            "--output", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots')}",
             "--translate", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'poi_differential_hesse_noLabels.json')}"
         ]
         if convert_boolean_string(self.noPreliminary):
@@ -3044,8 +2740,8 @@ class AsimovCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #
             f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'makeCorrMatrix.py')}",
             "--inputJson", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'inputs_robustHesse.json')}",
             "--mode", f"{self.variable}",
-            "--input", f"{os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', f'robustHessefirstStep.root')}",
-            "--output", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots')}",
+            "--input", f"{os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', f'robustHessefirstStep.root')}",
+            "--output", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots')}",
             "--translate", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'poi_differential_hesse_noLabels.json')}",
             "--doCov"
         ]
@@ -3083,7 +2779,7 @@ class AsimovCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #
             
         os.chdir(cwd)
 
-class UnblindedFitFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedFitFirstStep(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
     # def requires(self):
     def workflow_requires(self):
@@ -3122,31 +2818,17 @@ class UnblindedFitFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
+        output = {}
         
-        output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'dataFit')]
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'dataFit', f'higgsCombineDataPostFitBestFit_{current_cat}.MultiDimFit.mH{HIGGS_MASS}.root')]
-        
-        outputFileTargets = []
-                
-        for _, current_output_path in enumerate(output):
-            outputFileTargets.append(law.LocalFileTarget(current_output_path))
-            
-        # print("AsimovFitCategorySyst", outputFileTargets)
+        output['scan_folder'] = law.LocalFileTarget(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'dataFit'))
+        output['first_step_root'] = law.LocalFileTarget(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'dataFit', f'higgsCombineDataPostFitBestFit_{current_cat}.MultiDimFit.mH{HIGGS_MASS}.root'))
 
-        return outputFileTargets
+        return output
 
     def run(self):
         current_cat = self.branch_data
         
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-            
-        else:
-            fitFolderName = f'runFits_{self.variable}'
+
                     
         config = self.get_input_config()
 
@@ -3157,24 +2839,19 @@ class UnblindedFitFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
 
         output_dir = self.get_output_dir()
         
-        
         cwd = os.getcwd()
         
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
         fit_dir = os.path.join(
-            output_dir, "Combine", self.outdir, fitFolderName, "dataFit"
+            output_dir, "Combine", self.outdir, self.fitFolderName, "dataFit"
         )
         os.makedirs(fit_dir, exist_ok=True)
         os.chdir(fit_dir)
 
         if self.variable == '':
-            arguments = [
-                "combine",
+            arguments = [                "combine",
                 "-M", "MultiDimFit",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--freezeParameters", "MH",
                 "-m", f"{HIGGS_MASS}",
                 "-n", f"DataPostFitBestFit_{current_cat}",
@@ -3204,14 +2881,16 @@ class UnblindedFitFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             
         elif self.variable == 'MH':
             arguments = [
-                "combine", "-M", "MultiDimFit", "-d", datacard_path,
+                "combine", "-M", "MultiDimFit", 
+                "-d", self.datacard_path,
+                "-P", "MH",
                 "--redefineSignalPOIs", "MH",
                 "--freezeParameters", "r",
                 "--setParameters", f"r=1,MH={HIGGS_MASS}",
                 "--setParameterRanges", config['combine_fit']['setParameterRange'],
                 "-m", f"{HIGGS_MASS}",
                 "-n", f"DataPostFitBestFit_{current_cat}",
-                "--algo", "singles", "-P", "MH",
+                "--algo", "singles", 
                 "--floatOtherPOIs", "1", "--saveWorkspace", "--saveFitResult",
                 "--cminDefaultMinimizerStrategy=0",
                 "--cminFallbackAlgo", "Minuit2,Migrad,1:10",
@@ -3227,7 +2906,7 @@ class UnblindedFitFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
-                datacard_path,
+                "-d", self.datacard_path,
                 "--freezeParameters", "MH",
                 "-m", f"{HIGGS_MASS}",
                 "-n", f"DataPostFitBestFit_{current_cat}",
@@ -3261,7 +2940,7 @@ class UnblindedFitFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
 
         
 
-class UnblindedCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedCovCorrHesse(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
     # def requires(self):
     def workflow_requires(self):
@@ -3287,19 +2966,15 @@ class UnblindedCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
                   
         if self.variable == '':
             output = []
         else:
-            output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse')]
+            output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse')]
 
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', f'robustHessefirstStep_data.root')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', f'multidimfitfirstStep_data.root')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', f'higgsCombinefirstStep_data.MultiDimFit.mH{HIGGS_MASS}.root')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', f'robustHessefirstStep_data.root')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', f'multidimfitfirstStep_data.root')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', f'higgsCombinefirstStep_data.MultiDimFit.mH{HIGGS_MASS}.root')]
             
         outputFileTargets = []
                 
@@ -3314,37 +2989,21 @@ class UnblindedCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             print("Running UnblindedCovCorrHesse for inclusive does not make sense. Please specify a variable.")
             exit(1)
             
-        else:
-            fitFolderName = f'runFits_{self.variable}'
                   
         config = self.get_input_config()
         output_dir = self.get_output_dir() 
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
 
         cwd = os.getcwd()
         
-        if self.batch_flavor == "slurm/psi":
-            # Have to use /scratch/batch_username/ for slurm/psi
-            if "/work" in output_dir:
-                execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse'], shell=True)
-            else:
-                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse'], shell=True)
-
-            os.environ["TARGET_PATH"] = f"/scratch/{os.environ['USER']}/{os.environ['SLURM_JOB_ID']}"
-            execute_command([f'mkdir -p $TARGET_PATH/Combine/{self.outdir}/{fitFolderName}/hesse'], shell=True)
-            os.chdir(os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'hesse'))
-        else:
-            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse'], shell=True)
-            os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse'))
+        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse'], shell=True)
+        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse'))
 
         arguments = [
             "combine",
             "-M", "MultiDimFit",
-            datacard_path,
+            self.datacard_path,
             "--freezeParameters", "MH",
             "-m", f"{HIGGS_MASS}",
             "-n", "firstStep_data",
@@ -3369,31 +3028,10 @@ class UnblindedCovCorrHesse(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWork
             print("Script executed successfully.")
         except subprocess.CalledProcessError as e:
             print("Error executing script:", e.stderr)
-        
-        # Copy the files back to pnfs if we are on slurm/psi
-        if self.batch_flavor == "slurm/psi":
-            # Have to copy over the output to the final directory
-            # Don't forget to VOMS!
-            if "/work" in output_dir:
-                slurm_copy_command = [
-                    'cp', '-rf',
-                    f"{os.environ['TARGET_PATH']}/Combine/",
-                    output_dir
-                ]
-            else:
-                slurm_copy_command = [
-                    'xrdcp', '-rf',
-                    f"{os.environ['TARGET_PATH']}/Combine/",
-                    'root://t3dcachedb03.psi.ch:1094//'+output_dir
-                ]
-            print(slurm_copy_command)
-            execute_command(slurm_copy_command)
-            # Clean up the temporary directory
-            shutil.rmtree(os.environ["TARGET_PATH"])
             
         os.chdir(cwd)
         
-class UnblindedCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedCovCorr(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
     noPreliminary = law.Parameter(default=False, description="Flag, if final plot should bear the Preliminary.")
 
     # def requires(self):
@@ -3427,18 +3065,14 @@ class UnblindedCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
             
-        # output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName)]
-        output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', 'data')]
+        # output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName)]
+        output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', 'data')]
 
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', 'data', f'corrMatrix_{self.variable}_syst_obs.pdf')]
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', 'data', f'corrMatrix_{self.variable}_syst_obs.png')]
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', 'data', f'covMatrix_{self.variable}_syst_obs.pdf')]
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', 'data', f'covMatrix_{self.variable}_syst_obs.png')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', 'data', f'corrMatrix_{self.variable}_syst_obs.pdf')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', 'data', f'corrMatrix_{self.variable}_syst_obs.png')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', 'data', f'covMatrix_{self.variable}_syst_obs.pdf')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', 'data', f'covMatrix_{self.variable}_syst_obs.png')]
         
         outputFileTargets = []
                 
@@ -3454,9 +3088,7 @@ class UnblindedCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
         if self.variable == '':
             print("Running UnblindedCovCorrHesse for inclusive does not make sense. Please specify a variable.")
             exit(1)
-            
-        else:
-            fitFolderName = f'runFits_{self.variable}'
+        
                   
         config = self.get_input_config()
         output_dir = self.get_output_dir() 
@@ -3464,32 +3096,32 @@ class UnblindedCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
         if self.batch_flavor == "slurm/psi":
             # Have to use /scratch/batch_username/ for slurm/psi
             if "/work" in output_dir:
-                execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse/Plots/data'], shell=True)
+                execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse/Plots/data'], shell=True)
             else:   
-                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse/Plots/data'], shell=True)
+                execute_command([f'xrdfs root://t3dcachedb03.psi.ch:1094/ mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse/Plots/data'], shell=True)
 
             os.environ["TARGET_PATH"] = f"/scratch/{os.environ['USER']}/{os.environ['SLURM_JOB_ID']}"
-            execute_command([f'mkdir -p $TARGET_PATH/Combine/{self.outdir}/{fitFolderName}/hesse/Plots/data'], shell=True)
+            execute_command([f'mkdir -p $TARGET_PATH/Combine/{self.outdir}/{self.fitFolderName}/hesse/Plots/data'], shell=True)
 
             if "/work" in output_dir:
                 slurm_copy_command = [
                     'cp', '-rf',
-                    f'{output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse',
-                    f'{os.environ["TARGET_PATH"]}/Combine/{self.outdir}/{fitFolderName}/'
+                    f'{output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse',
+                    f'{os.environ["TARGET_PATH"]}/Combine/{self.outdir}/{self.fitFolderName}/'
                 ]
             else:
                 slurm_copy_command = [
                     'xrdcp', '-rf',
-                    'root://t3dcachedb03.psi.ch:1094//'+ f'{output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse',
-                    f'{os.environ["TARGET_PATH"]}/Combine/{self.outdir}/{fitFolderName}/'
+                    'root://t3dcachedb03.psi.ch:1094//'+ f'{output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse',
+                    f'{os.environ["TARGET_PATH"]}/Combine/{self.outdir}/{self.fitFolderName}/'
                 ]
             execute_command(slurm_copy_command)
-            # output_dir = os.path.join(os.environ["TARGET_PATH"], 'Combine', fitFolderName, 'hesse', 'Plots', 'data')
+            # output_dir = os.path.join(os.environ["TARGET_PATH"], 'Combine', self.fitFolderName, 'hesse', 'Plots', 'data')
             temp_output_dir = os.environ["TARGET_PATH"]
         else:
-            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/hesse/Plots/data'], shell=True)
+            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/hesse/Plots/data'], shell=True)
             temp_output_dir = output_dir
-            # output_dir = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', 'data')     
+            # output_dir = os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', 'data')     
         
         cwd = os.getcwd()
         os.chdir(os.path.join(os.environ["ANALYSIS_PATH"], 'Plots'))
@@ -3499,8 +3131,8 @@ class UnblindedCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
             f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'makeCorrMatrix.py')}",
             "--inputJson", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'inputs_robustHesse.json')}",
             "--mode", f"{self.variable}",
-            "--input", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', f'robustHessefirstStep_data.root')}",
-            "--output", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', 'data')}",
+            "--input", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', f'robustHessefirstStep_data.root')}",
+            "--output", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', 'data')}",
             "--translate", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'poi_differential_hesse_noLabels.json')}",
             "--doObserved"
         ]
@@ -3520,8 +3152,8 @@ class UnblindedCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
             f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'makeCorrMatrix.py')}",
             "--inputJson", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'inputs_robustHesse.json')}",
             "--mode", f"{self.variable}",
-            "--input", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', f'robustHessefirstStep_data.root')}",
-            "--output", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'hesse', 'Plots', 'data')}",
+            "--input", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', f'robustHessefirstStep_data.root')}",
+            "--output", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'hesse', 'Plots', 'data')}",
             "--translate", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'poi_differential_hesse_noLabels.json')}",
             "--doCov",
             "--doObserved"
@@ -3561,7 +3193,7 @@ class UnblindedCovCorr(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
         os.chdir(cwd)
         
         
-class UnblindedImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedImpactFirstStep(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
     # def requires(self):
     def workflow_requires(self):
         workflow_reqs = super().workflow_requires()
@@ -3592,14 +3224,10 @@ class UnblindedImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
             
-        output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded')]
+        output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded')]
 
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', f'higgsCombine_initialFit_Test.MultiDimFit.mH{HIGGS_MASS}.root')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', f'higgsCombine_initialFit_Test.MultiDimFit.mH{HIGGS_MASS}.root')]
         
         outputFileTargets = []
                 
@@ -3610,11 +3238,7 @@ class UnblindedImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
 
     def run(self):
        
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-            
-        else:
-            fitFolderName = f'runFits_{self.variable}'
+
                   
         config = self.get_input_config()
 
@@ -3627,25 +3251,20 @@ class UnblindedImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
         else:
             output_dir = self.output_dir  
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
         
         cwd = os.getcwd()
-
-        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/impact/unblinded'], shell=True)
-        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded'))
+        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/impact/unblinded'], shell=True)
+        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded'))
                     
         common_arguments = [
-            "-d", datacard_path,
+            "-d", self.datacard_path,
             "-m", f"{HIGGS_MASS}",
             "--robustFit", "1",
             "--cminDefaultMinimizerStrategy=0",
             "--cminFallbackAlgo", "Minuit2,Migrad,1:10",
             "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
-            "--X-rtd", "MINIMIZER_multiMin_hideConstants",
-            "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
+            "--X-rtd", "MINIMIZER_multiMin_hideConstants",            "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
             "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
             "--cminApproxPreFitTolerance", f"{cminApproxPreFitTolerance}",
         ]
@@ -3711,7 +3330,7 @@ class UnblindedImpactFirstStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
             
         os.chdir(cwd)
         
-class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedImpactSecondStep(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
     # def requires(self):
     def workflow_requires(self):
         workflow_reqs = super().workflow_requires()
@@ -3746,10 +3365,7 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
         config = self.get_input_config()
         output_dir = self.get_output_dir() 
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
     
         if self.variable == '':
             poiList = ["r"]
@@ -3765,9 +3381,8 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
         # parameters, which are not standard +/-1 sigma impact nuisances.
         exclude_expr = config.get("combine_impacts", {}).get("exclude", "")
         paramList = _list_modelconfig_nuisances(
-            datacard_path, poiList, exclude_expr=exclude_expr
+            self.datacard_path, poiList, exclude_expr=exclude_expr
         )
-
         
         branch_map = {i: current_param for i, current_param in enumerate(paramList)}
         return branch_map
@@ -3778,15 +3393,11 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
             
-        # output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName)]
-        output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded')]
+        # output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName)]
+        output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded')]
 
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', f'higgsCombine_paramFit_Test_{current_param}.MultiDimFit.mH{HIGGS_MASS}.root')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', f'higgsCombine_paramFit_Test_{current_param}.MultiDimFit.mH{HIGGS_MASS}.root')]
         
         outputFileTargets = []
                 
@@ -3823,11 +3434,7 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
     def run(self):
         current_param = self.branch_data
        
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-            
-        else:
-            fitFolderName = f'runFits_{self.variable}'
+
                   
         #Load central config file
         config = self.get_input_config()
@@ -3839,19 +3446,15 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
 
         output_dir = self.get_output_dir() 
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
         
         cwd = os.getcwd()
 
-        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/impact/unblinded'], shell=True)
-        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded'))
+        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/impact/unblinded'], shell=True)
+        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded'))
 
-        if self.variable == '':
-            
-            initial_fit = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', f'higgsCombine_initialFit_Test.MultiDimFit.mH{HIGGS_MASS}.root')
+        if self.variable == '':            
+            initial_fit = os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', f'higgsCombine_initialFit_Test.MultiDimFit.mH{HIGGS_MASS}.root')
             
             f = ROOT.TFile(initial_fit)
             tree = f.Get("limit")
@@ -3862,8 +3465,7 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
             # Access the branch 'r_YH_2p0_2p5' and get its first value
             if hasattr(tree, 'r'):
                 tree.GetEntry(0)  # Load the first entry
-                poi_bf_value = getattr(tree, 'r')  # Access the branch value
-                poi_bf_string = f'r={poi_bf_value}'
+                poi_bf_value = getattr(tree, 'r')  # Access the branch value                poi_bf_string = f'r={poi_bf_value}'
                 print(f"First value of branch 'r': {poi_bf_value}")
             else:
                 print("Error: Branch 'r' not found in the tree.")
@@ -3872,7 +3474,7 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--algo", "impact",
                 "--redefineSignalPOIs", "r",
                 "--freezeParameters", "MH",
@@ -3908,7 +3510,7 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
                 output_dir,
                 'Combine',
                 self.outdir,
-                fitFolderName,
+                self.fitFolderName,
                 'impact',
                 'unblinded',
                 f'higgsCombine_initialFit_Test.MultiDimFit.mH{HIGGS_MASS}.root',
@@ -3929,7 +3531,7 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--algo", "impact",
                 "--redefineSignalPOIs", "MH",
                 "--setParameters", f"r=1,MH={mh_bf}",
@@ -3965,7 +3567,7 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
 
         else:
 
-            initial_fit = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', f'higgsCombine_initialFit_Test.MultiDimFit.mH{HIGGS_MASS}.root')
+            initial_fit = os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', f'higgsCombine_initialFit_Test.MultiDimFit.mH{HIGGS_MASS}.root')
 
             poi_bf = []
             
@@ -3992,7 +3594,7 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
             arguments = [
                 "combine",
                 "-M", "MultiDimFit",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--algo", "impact",
                 "--redefineSignalPOIs", f"""{",".join(combineVariableDict(self.variable, self.year)['paramStrNoOne'])}""",
                 "--setParameters", poi_bf_string,
@@ -4021,7 +3623,7 @@ class UnblindedImpactSecondStep(Task, law.LocalWorkflow, HTCondorWorkflow, Slurm
             
         os.chdir(cwd)
         
-class UnblindedImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class UnblindedImpactThirdStep(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
 
     # def requires(self):
@@ -4061,25 +3663,21 @@ class UnblindedImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
 
         output = []
         if self.variable in ['', 'MH']:
             cat = 'MH' if self.variable == 'MH' else 'r'
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts', f'impacts_unblinded.pdf')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts_corrected_dropBkgModelParams.json')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts', f'impacts_unblinded.pdf')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts_corrected_dropBkgModelParams.json')]
             
         else:
             for cat in combineVariableDict(self.variable, self.year)['paramStrNoOne']:
-                output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts')]
-                output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts', f'impacts_unblinded_{cat}.pdf')]
-                output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts_corrected_dropBkgModelParams.json')]
+                output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts')]
+                output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts', f'impacts_unblinded_{cat}.pdf')]
+                output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts_corrected_dropBkgModelParams.json')]
                 
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts', f'impacts.json')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts', f'impacts.json')]
         
         outputFileTargets = []
                 
@@ -4092,48 +3690,40 @@ class UnblindedImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
 
     def run(self):
        
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
                   
         config = self.get_input_config()
         output_dir = self.get_output_dir() 
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
 
         cwd = os.getcwd()
 
-        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/impact/unblinded/impacts'], shell=True)
-        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded'))
+        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/impact/unblinded/impacts'], shell=True)
+        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded'))
         temp_output_dir = output_dir
 
         if self.variable in ('', 'MH'):
             is_mh = self.variable == 'MH'
             poi_list = ["MH", "r"] if is_mh else ["r"]
             nuisance_parameters = _list_modelconfig_nuisances(
-                datacard_path,
+                self.datacard_path,
                 poi_list,
                 exclude_expr=config["combine_impacts"].get("exclude", ""),
             )
             if not nuisance_parameters:
                 raise RuntimeError(
-                    f"No constrained nuisance parameters found in '{datacard_path}'"
+                    f"No constrained nuisance parameters found in '{self.datacard_path}'"
                 )
             excluded_parameters = [
                 item.strip()
                 for item in config["combine_impacts"].get("exclude", "").split(",")
-                if item.strip()
-            ]
+                if item.strip()            ]
             if is_mh and "r" not in excluded_parameters:
                 excluded_parameters.append("r")
             arguments = [
                 "combineTool.py",
                 "-M", "Impacts",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "-m", f"{HIGGS_MASS}",
                 "-o", "impacts/impacts.json",
                 "--named", ",".join(nuisance_parameters),
@@ -4158,7 +3748,7 @@ class UnblindedImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
             arguments = [
                 "python3",
                 f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'correctImpacts.py')}",
-                "--impactsJson", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts.json')}",
+                "--impactsJson", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts.json')}",
                 "--frozenParam", "r" if is_mh else "MH",
                 "--dropBkgModelParams"
             ]
@@ -4174,7 +3764,7 @@ class UnblindedImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
                 
             arguments = [
                 "plotImpacts.py",
-                "-i", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts_corrected_dropBkgModelParams.json')}",
+                "-i", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts_corrected_dropBkgModelParams.json')}",
                 "-o", "impacts/impacts_unblinded",
             ]
             if is_mh:
@@ -4199,7 +3789,7 @@ class UnblindedImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
             arguments = [
                 "combineTool.py",
                 "-M", "Impacts",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "--freezeParameters", "MH",
                 "-m", f"{HIGGS_MASS}",
                 "-o", "impacts/impacts.json",
@@ -4220,7 +3810,7 @@ class UnblindedImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
             arguments = [
                 "python3",
                 f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Plots', 'correctImpacts.py')}",
-                "--impactsJson", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts.json')}",
+                "--impactsJson", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts.json')}",
                 "--frozenParam", "MH",
                 "--dropBkgModelParams"
             ]
@@ -4240,7 +3830,7 @@ class UnblindedImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
             for cat in combineVariableDict(self.variable, self.year)['paramStrNoOne']:
                 arguments = [
                     "plotImpacts.py",
-                    "-i", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts_corrected_dropBkgModelParams.json')}",
+                    "-i", f"{os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'impact', 'unblinded', 'impacts', 'impacts_corrected_dropBkgModelParams.json')}",
                     "-o", f"impacts/impacts_unblinded_{cat}",
                     "--POI", f"{cat}",
                     "--translate", f"{os.path.join(os.environ['ANALYSIS_PATH'], 'Combine', 'pois.json')}",
@@ -4260,7 +3850,7 @@ class UnblindedImpactThirdStep(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmW
         os.chdir(cwd)
         
         
-class MggBestFit(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class MggBestFit(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
     # def requires(self):
     def workflow_requires(self):
@@ -4302,14 +3892,10 @@ class MggBestFit(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(la
         config = self.get_input_config()
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
             
-        output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit')]
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}')]
-        output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', f'higgsCombine_bestfit_syst_obs_{cat}.MultiDimFit.mH{HIGGS_MASS}.root')]
+        output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}')]
+        output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', f'higgsCombine_bestfit_syst_obs_{cat}.MultiDimFit.mH{HIGGS_MASS}.root')]
         
         outputFileTargets = []
                 
@@ -4323,24 +3909,17 @@ class MggBestFit(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(la
     def run(self):
         cat = self.branch_data
        
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-            
-        else:
-            fitFolderName = f'runFits_{self.variable}'
+
                   
         config = self.get_input_config()
         output_dir = self.get_output_dir() 
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
              
         cwd = os.getcwd()
 
-        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/postFit/SplusBModels_{cat}'], shell=True)
-        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}'))
+        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/postFit/SplusBModels_{cat}'], shell=True)
+        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}'))
 
         arguments = [
             "combine",
@@ -4353,15 +3932,14 @@ class MggBestFit(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(la
             "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
             "--X-rtd", "MINIMIZER_multiMin_hideConstants",
             "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
-            "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
-            "-M", f"{config['combine_mggToys']['loadSnapshot']}",
+            "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",            "-M", f"{config['combine_mggToys']['loadSnapshot']}",
             "-m", f"{HIGGS_MASS}",
-            "-d", datacard_path,
+            "-d", self.datacard_path,
             "-n", f"_bestfit_syst_obs_{cat}"
         ]
 
         if self.variable == "MH":
-            arguments += ["--redefineSignalPOIs", "MH"]
+            arguments += ["--redefineSignalPOIs", "MH"]            
             arguments += ["--freezeParameters", "r"]
             arguments += ["--setParameters", f"r=1,MH={HIGGS_MASS}"]
         else:
@@ -4391,7 +3969,7 @@ def _valid_gof_output(path, minimum_entries=1):
         return False
 
 
-class UnblindedGoodnessOfFitData(Task):
+class UnblindedGoodnessOfFitData(CombineTask):
     """Compute the saturated GOF statistic for the observed dataset."""
 
     mass = luigi.FloatParameter(default=125.0)
@@ -4549,7 +4127,7 @@ class UnblindedGoodnessOfFitToys(
         shutil.move(generated[0], self.output().path)
 
 
-class UnblindedGoodnessOfFit(Task):
+class UnblindedGoodnessOfFit(CombineTask):
     """Merge GOF toys, collect the result and make the saturated-GOF plot."""
 
     n_toys = luigi.IntParameter(default=50)
@@ -4670,7 +4248,7 @@ class UnblindedGoodnessOfFit(Task):
         )
 
 
-class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class MggToyGeneration(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
     is_postfit = luigi.BoolParameter(
         default=False,
@@ -4739,23 +4317,19 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
                 
         output_dir = self.get_output_dir()
 
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-        else:
-            fitFolderName = f'runFits_{self.variable}'
             
         if self.is_postfit:
-            output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', 'filechecker')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', 'filechecker', f'toy_{toy}_ok.txt')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root')]
+            output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', 'filechecker')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', 'filechecker', f'toy_{toy}_ok.txt')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root')]
         else:
-            output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', 'filechecker')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', 'filechecker', f'toy_{toy}_ok.txt')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root')]
+            output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', 'filechecker')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', 'filechecker', f'toy_{toy}_ok.txt')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root')]
         
         outputFileTargets = []
                 
@@ -4767,20 +4341,13 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
     def run(self):
         toy, cat = self.branch_data
        
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-            
-        else:
-            fitFolderName = f'runFits_{self.variable}'
+
                   
         config = self.get_input_config()
         output_dir = self.get_output_dir() 
 
             
-        if self.variable == '':
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.year}.root')
-        else:
-            datacard_path = os.path.join(output_dir, 'Combine', self.outdir, f'Datacard_{self.variable}_{self.year}.root')
+
              
         cwd = os.getcwd()
 
@@ -4788,10 +4355,10 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
 
             os.environ["TARGET_PATH"] = f"/scratch/{os.environ['USER']}/{os.environ['SLURM_JOB_ID']}"
 
-            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/postFit/SplusBModels_{cat}/toys/filechecker'], shell=True)
-            os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys'))
+            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/postFit/SplusBModels_{cat}/toys/filechecker'], shell=True)
+            os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys'))
         
-            best_fit = os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', f'higgsCombine_bestfit_syst_obs_{cat}.MultiDimFit.mH{HIGGS_MASS}.root')
+            best_fit = os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', f'higgsCombine_bestfit_syst_obs_{cat}.MultiDimFit.mH{HIGGS_MASS}.root')
 
             f = ROOT.TFile(best_fit)
             w = f.Get("w")
@@ -4801,16 +4368,14 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
             arguments = [
                 "combine",
                 best_fit,
-                "-M", "GenerateOnly",
-                "-m", f"{HIGGS_MASS}",
+                "-M", "GenerateOnly",                "-m", f"{HIGGS_MASS}",
                 "--saveWorkspace",
                 "--toysFrequentist",
                 "--bypassFrequentistFit",
                 "-t", "1",
                 "-s", "-1",
                 "-n", f"_{toy}_gen_step",
-                "--setParameters", f"{cat}={poi_bf}",
-                "--snapshotName", f"{config['combine_mggToys']['loadSnapshot']}"
+                "--setParameters", f"{cat}={poi_bf}",                "--snapshotName", f"{config['combine_mggToys']['loadSnapshot']}"
             ]
             command = arguments
             # print(command)
@@ -4827,8 +4392,8 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
             # and in the other cases the output_dir
             toy_output_dir = output_dir
 
-            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_gen_step*.root')
-            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'gen_{toy}.root')
+            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_gen_step*.root')
+            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'gen_{toy}.root')
 
             # Use glob to find files matching the source pattern
             source_files = glob.glob(source_pattern)
@@ -4875,8 +4440,8 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
                 print("Error executing script:", e.stderr)    
                 
             # Define the source pattern and destination path
-            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_fit_step*.root')
-            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'fit_{toy}.root')
+            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_fit_step*.root')
+            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'fit_{toy}.root')
 
             # Use glob to find files matching the source pattern
             source_files = glob.glob(source_pattern)
@@ -4921,8 +4486,8 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
                 print("Error executing script:", e.stderr)
                 
             # Define the source pattern and destination path
-            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_throw_step*.root')
-            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root')
+            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_throw_step*.root')
+            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root')
 
             # Use glob to find files matching the source pattern
             source_files = glob.glob(source_pattern)
@@ -4940,7 +4505,7 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
                         print(f"Error moving file {source_file}: {e}")
                         
             # Define the files to remove
-            files_to_remove = [os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'gen_{toy}.root'), os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'fit_{toy}.root')]
+            files_to_remove = [os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'gen_{toy}.root'), os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'fit_{toy}.root')]
 
             # Remove each specified file
             for file_path in files_to_remove:
@@ -4955,9 +4520,9 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
             
             # Check if toy is > 1000 bytes (== file empty)
             try:
-                file_size = os.path.getsize(os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root'))  # Get the file size in bytes
+                file_size = os.path.getsize(os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root'))  # Get the file size in bytes
                 if file_size > 1000:
-                    with open(os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', 'filechecker', f'toy_{toy}_ok.txt'), 'w') as f:
+                    with open(os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', 'toys', 'filechecker', f'toy_{toy}_ok.txt'), 'w') as f:
                         pass
             except OSError:
                 # Handle the case where the file does not exist or is inaccessible
@@ -4966,13 +4531,13 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
 
         else:
 
-            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/preFit/SplusBModels_{cat}/toys/filechecker'], shell=True)
-            os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys'))
+            execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/preFit/SplusBModels_{cat}/toys/filechecker'], shell=True)
+            os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys'))
 
             arguments = [
                 "combine",
                 "-M", "GenerateOnly",
-                "-d", datacard_path,
+                "-d", self.datacard_path,
                 "-m", f"{HIGGS_MASS}",
                 "--saveWorkspace",
                 "--toysFrequentist",
@@ -5000,8 +4565,8 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
             # Define the source pattern and destination path
             toy_output_dir = output_dir
                 
-            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_gen_step*.root')
-            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'gen_{toy}.root')
+            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_gen_step*.root')
+            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'gen_{toy}.root')
 
             # Use glob to find files matching the source pattern
             source_files = glob.glob(source_pattern)
@@ -5054,8 +4619,8 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
                 print("Error executing script:", e.stderr)    
                 
             # Define the source pattern and destination path
-            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_fit_step*.root')
-            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'fit_{toy}.root')
+            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_fit_step*.root')
+            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'fit_{toy}.root')
 
             # Use glob to find files matching the source pattern
             source_files = glob.glob(source_pattern)
@@ -5099,8 +4664,8 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
                 print("Error executing script:", e.stderr)
                 
             # Define the source pattern and destination path
-            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_throw_step*.root')
-            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root')
+            source_pattern = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'higgsCombine_{toy}_throw_step*.root')
+            destination = os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root')
 
             # Use glob to find files matching the source pattern
             source_files = glob.glob(source_pattern)
@@ -5118,7 +4683,7 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
                         print(f"Error moving file {source_file}: {e}")
                         
             # Define the files to remove
-            files_to_remove = [os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'gen_{toy}.root'), os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'fit_{toy}.root')]
+            files_to_remove = [os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'gen_{toy}.root'), os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'fit_{toy}.root')]
 
             # Remove each specified file
             for file_path in files_to_remove:
@@ -5133,9 +4698,9 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
             
             # Check if toy is > 1000 bytes (== file empty)
             try:
-                file_size = os.path.getsize(os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root'))  # Get the file size in bytes
+                file_size = os.path.getsize(os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', f'toy_{toy}.root'))  # Get the file size in bytes
                 if file_size > 1000:
-                    with open(os.path.join(toy_output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', 'filechecker', f'toy_{toy}_ok.txt'), 'w') as f:
+                    with open(os.path.join(toy_output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', 'toys', 'filechecker', f'toy_{toy}_ok.txt'), 'w') as f:
                         pass
             except OSError:
                 # Handle the case where the file does not exist or is inaccessible
@@ -5144,7 +4709,7 @@ class MggToyGeneration(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow)
         
         os.chdir(cwd)
         
-class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class MggDistribution(CombineMultiYearTask): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
     is_postfit = luigi.BoolParameter(default=False, description="Flag that signifies if toys are created for postfit mass distributions.")
 
@@ -5211,7 +4776,6 @@ class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law
         output_dir = self.get_output_dir()
 
         if self.variable == 'MH':
-            fitFolderName = 'runFits_MH'
             years = yearMap[self.year]
             if len(years) > 1:
                 reco_cats_with_bmw = ['all']
@@ -5219,7 +4783,6 @@ class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law
                 reco_cats_with_bmw = self.get_cats(return_list=True)
 
         elif self.variable == '':
-            fitFolderName = 'runFits_mu_fiducial'
             reco_cats_with_bmw = ['cat0', 'cat1', 'cat2']
             if "_" in self.year:
                 cats = []
@@ -5230,7 +4793,6 @@ class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law
                 reco_cats_with_bmw = cats
 
         else:
-            fitFolderName = f'runFits_{self.variable}'
             reco_cats_with_bmw = [element for element in combineVariableDict(self.variable, self.year)['catsStrWithBMW'] if "_".join(cat.split("_")[2:]) in element]
             if "_" in self.year:
                 cats = []
@@ -5242,25 +4804,25 @@ class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law
         
         output = []
         if self.is_postfit:
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', 'jsons')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', 'jsons', f'catsWeights_sospb_{cat}_CMS_hgg_mass.json')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', 'jsons')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', 'jsons', f'catsWeights_sospb_{cat}_CMS_hgg_mass.json')]
             
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_{catWithBMW}_CMS_hgg_mass.pdf') for catWithBMW in reco_cats_with_bmw]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_{catWithBMW}_CMS_hgg_mass.png') for catWithBMW in reco_cats_with_bmw]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_all_CMS_hgg_mass.pdf')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_all_CMS_hgg_mass.png')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_wall_CMS_hgg_mass.pdf')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_wall_CMS_hgg_mass.png')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_{catWithBMW}_CMS_hgg_mass.pdf') for catWithBMW in reco_cats_with_bmw]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_{catWithBMW}_CMS_hgg_mass.png') for catWithBMW in reco_cats_with_bmw]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_all_CMS_hgg_mass.pdf')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_all_CMS_hgg_mass.png')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_wall_CMS_hgg_mass.pdf')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'postFit', f'SplusBModels_{cat}', f'{cat}_wall_CMS_hgg_mass.png')]
         else:
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', 'jsons')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', 'jsons', f'catsWeights_sospb_{cat}_CMS_hgg_mass.json')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', 'jsons')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', 'jsons', f'catsWeights_sospb_{cat}_CMS_hgg_mass.json')]
             
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_{catWithBMW}_CMS_hgg_mass.pdf') for catWithBMW in reco_cats_with_bmw]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_{catWithBMW}_CMS_hgg_mass.png') for catWithBMW in reco_cats_with_bmw]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_all_CMS_hgg_mass.pdf')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_all_CMS_hgg_mass.png')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_wall_CMS_hgg_mass.pdf')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_wall_CMS_hgg_mass.png')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_{catWithBMW}_CMS_hgg_mass.pdf') for catWithBMW in reco_cats_with_bmw]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_{catWithBMW}_CMS_hgg_mass.png') for catWithBMW in reco_cats_with_bmw]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_all_CMS_hgg_mass.pdf')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_all_CMS_hgg_mass.png')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_wall_CMS_hgg_mass.pdf')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'preFit', f'SplusBModels_{cat}', f'{cat}_wall_CMS_hgg_mass.png')]
                 
         
         outputFileTargets = []
@@ -5274,17 +4836,13 @@ class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law
 
     def run(self):
         cat = self.variable
-        fitFolderName = (
-            'runFits_mu_fiducial' if self.variable == ''
-            else f'runFits_{self.variable}'
-        )
 
         config = self.get_input_config()
         output_dir = self.get_output_dir()
         main_dir = os.getcwd()
         stage = 'postFit' if self.is_postfit else 'preFit'
         stage_dir = os.path.join(
-            output_dir, 'Combine', self.outdir, fitFolderName, stage
+            output_dir, 'Combine', self.outdir, self.fitFolderName, stage
         )
         plot_dir = os.path.join(stage_dir, f'SplusBModels_{cat}')
         execute_command([f'mkdir -p {plot_dir}'], shell=True)
@@ -5389,7 +4947,7 @@ class MggDistribution(MultiYearTask): #(law.Task): #(Task, HTCondorWorkflow, law
             os.chdir(main_dir)
         
         
-class PValueCalculation(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(Task, HTCondorWorkflow, law.LocalWorkflow):
+class PValueCalculation(CombineTask, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow): #(law.Task): #(CombineTask, HTCondorWorkflow, law.LocalWorkflow):
 
     # def requires(self):
     def workflow_requires(self):
@@ -5428,12 +4986,10 @@ class PValueCalculation(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow
         output_dir = self.get_output_dir()
 
         if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
             output = []
         else:
-            fitFolderName = f'runFits_{self.variable}'
-            output = [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'dataFit', f'higgsCombine.pvalue.MultiDimFit.mH{HIGGS_MASS}.root')]
-            output += [os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, f'pvalue.txt')]
+            output = [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'dataFit', f'higgsCombine.pvalue.MultiDimFit.mH{HIGGS_MASS}.root')]
+            output += [os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, f'pvalue.txt')]
 
         outputFileTargets = []
                 
@@ -5445,29 +5001,18 @@ class PValueCalculation(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow
         return outputFileTargets
     
     def run(self):
-       
-        if self.variable == '':
-            fitFolderName = f'runFits_mu_fiducial'
-
-        else:
-            fitFolderName = f'runFits_{self.variable}'
 
         #Load central config file
-        with open(configYamlPath, 'r') as file:
-            config = yaml.safe_load(file)
-
-        if self.output_dir == '':
-            output_dir = config['outputFolder']
-        else:
-            output_dir = self.output_dir  
+        config = self.get_input_config()
+        output_dir = self.get_output_dir()  
             
         cwd = os.getcwd()
-        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{fitFolderName}/dataFit'], shell=True)
-        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'dataFit'))
+        execute_command([f'mkdir -p {output_dir}/Combine/{self.outdir}/{self.fitFolderName}/dataFit'], shell=True)
+        os.chdir(os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'dataFit'))
         temp_output_dir = output_dir
                     
         # Define the file to check
-        pvalue_file = os.path.join(temp_output_dir, 'Combine', self.outdir, fitFolderName, 'dataFit', f'higgsCombine.pvalue.MultiDimFit.mH{HIGGS_MASS}.root')
+        pvalue_file = os.path.join(temp_output_dir, 'Combine', self.outdir, self.fitFolderName, 'dataFit', f'higgsCombine.pvalue.MultiDimFit.mH{HIGGS_MASS}.root')
         # Check if the file exists
         if not os.path.isfile(pvalue_file):
             print("The pvalue file does not exist in the current directory. Creating it...")
@@ -5475,7 +5020,7 @@ class PValueCalculation(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow
             command = [
                 "combine",
                 "-M", "MultiDimFit",
-                os.path.join(output_dir, 'Combine', self.outdir, fitFolderName, 'dataFit', f"higgsCombineDataPostFitScanFit_{combineVariableDict(self.variable, self.year)['paramStrNoOne'][0]}.MultiDimFit.mH{HIGGS_MASS}.root"),
+                os.path.join(output_dir, 'Combine', self.outdir, self.fitFolderName, 'dataFit', f"higgsCombineDataPostFitScanFit_{combineVariableDict(self.variable, self.year)['paramStrNoOne'][0]}.MultiDimFit.mH{HIGGS_MASS}.root"),
                 "--algo", "fixed",
                 "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
                 "--X-rtd", "MINIMIZER_multiMin_hideConstants",
@@ -5506,7 +5051,7 @@ class PValueCalculation(Task, law.LocalWorkflow, HTCondorWorkflow, SlurmWorkflow
         # Count the number of elements in paramStrNoOne
         n_bins = len(combineVariableDict(self.variable, self.year)['paramStrNoOne'])
 
-        # Change directory to the fitFolderName
+        # Change directory to the self.fitFolderName
         os.chdir("../")
 
         def calculate_pvalue(filename, n_bins):
